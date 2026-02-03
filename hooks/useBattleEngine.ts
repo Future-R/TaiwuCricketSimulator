@@ -17,7 +17,8 @@ export const useBattleEngine = () => {
   const [lastHitWasCrit, setLastHitWasCrit] = useState(false);
   const [counterCount, setCounterCount] = useState(0);
   const [currentAttackerIsP1, setCurrentAttackerIsP1] = useState(false);
-  const [simulationResults, setSimulationResults] = useState<{message: string, type: 'score' | 'winrate' | 'matrix'} | null>(null);
+  // Updated type to include count
+  const [simulationResults, setSimulationResults] = useState<{message: string, type: 'score' | 'winrate' | 'matrix', count?: number} | null>(null);
   const [matrixData, setMatrixData] = useState<{names: string[], grid: number[][], averages: number[]} | null>(null);
 
   // Initialize Visual Battle
@@ -62,7 +63,8 @@ export const useBattleEngine = () => {
     const p2Wins = count - p1Wins;
     setSimulationResults({
         message: `${p1Wins} : ${p2Wins}`,
-        type: 'score'
+        type: 'score',
+        count
     });
   };
 
@@ -108,7 +110,8 @@ export const useBattleEngine = () => {
 
       setSimulationResults({
           message: msg,
-          type: 'winrate'
+          type: 'winrate',
+          count
       });
       setIsCalculating(false);
   };
@@ -210,7 +213,8 @@ export const useBattleEngine = () => {
 
       setSimulationResults({
           message: "Full Win Rate Matrix",
-          type: 'matrix'
+          type: 'matrix',
+          count
       });
       setIsCalculating(false);
   };

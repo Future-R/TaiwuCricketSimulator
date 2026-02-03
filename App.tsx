@@ -251,7 +251,7 @@ const App: React.FC = () => {
           {showMatrix ? (
             <div className="absolute inset-0 z-30 bg-zinc-950 flex flex-col flex-1 overflow-auto p-4 lg:p-6 lg:static">
                 <h2 className="text-xl lg:text-2xl font-bold text-amber-500 mb-4 flex justify-between items-center sticky top-0 bg-zinc-950 z-20 py-2">
-                    <span className="text-sm lg:text-xl">全员对战胜率表 (各{simCount}场)</span>
+                    <span className="text-sm lg:text-xl">全员对战胜率表 (各{simulationResults?.count || simCount}场)</span>
                     <button onClick={resetBattle} className="px-4 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700">关闭</button>
                 </h2>
                 <div className="overflow-x-auto border border-zinc-800 rounded flex-1">
@@ -351,7 +351,7 @@ const App: React.FC = () => {
 
           {/* 3. RIGHT SIDEBAR (Logs) */}
           <div className={`flex-col bg-zinc-900 lg:w-96 lg:flex-shrink-0 border-l border-zinc-800 lg:flex lg:static ${mobileTab === 'logs' ? 'flex absolute inset-0 z-20 w-full' : 'hidden'}`}>
-             <div className="p-3 border-b border-zinc-800 bg-zinc-900 font-bold text-zinc-400 text-sm">{simulationResults?.type === 'winrate' ? `胜率分析 (${simCount}场)` : '战斗过程记录'}</div>
+             <div className="p-3 border-b border-zinc-800 bg-zinc-900 font-bold text-zinc-400 text-sm">{simulationResults?.type === 'winrate' ? `胜率分析 (${simulationResults?.count || simCount}场)` : '战斗过程记录'}</div>
              <div className="flex-1 overflow-hidden relative bg-zinc-900">
                  {simulationResults?.type === 'winrate' ? (<div className="p-4 h-full overflow-y-auto whitespace-pre-line font-mono text-sm leading-6 text-zinc-300">{simulationResults.message}</div>) : (<BattleLogViewer logs={combatState?.logs || []} />)}
              </div>

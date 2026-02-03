@@ -77,7 +77,7 @@ const parseExpression = (expr: string, ctx: any, skill: SkillDefinition): number
     }
 };
 
-// 辅助：解析动作中的数值参数 (支持 "50%伤害量", "10点")
+// 辅助：解析动作中的数值参数 (支持 "50%伤害量", "10点", "200%回合数")
 const parseActionValue = (valStr: string, ctx: any): number => {
     let base = 0;
     let ratio = 1;
@@ -86,6 +86,8 @@ const parseActionValue = (valStr: string, ctx: any): number => {
         base = (ctx.actualHpDmg || 0) + (ctx.actualSpDmg || 0);
     } else if (valStr.includes('牙钳')) {
         base = ctx.owner.bite;
+    } else if (valStr.includes('回合数')) {
+        base = ctx.state?.round || 0;
     } else {
         // 纯数字
         const nums = valStr.match(/\d+/);
