@@ -86,26 +86,6 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
             }
         }
     },
-    // Brocade Helper - The Debuff Effect needs to be a "skill" or handled by the opponent checking for debuff?
-    // In this system, Brocade applies a state to opponent. The opponent needs a way to respect that state.
-    // Solution: A global "Debuff Check" or Brocade registers a stateless modifier?
-    // Easiest: The `getStat` function in combatLogic checks `skillState`. 
-    // BUT we want to move logic here.
-    // Better: Brocade adds a `StatModifier` hook to the *opponent*? No, that's complex.
-    // Let's stick to `onStatCalculate` in the Brocade definition, checking the *opponent*?
-    // `onStatCalculate` is called for the owner of the skill.
-    // So Brocade logic stays: Brocade sets state on Opponent. Opponent needs a "Generic Debuff Listener"?
-    // Or we add a "Global Skill" that everyone has? No.
-    // Revised: We will keep `brocadeDebuff` in SkillState, and the `getStat` engine will need a tiny generic check OR
-    // we make Brocade's effect a property of Brocade's existence. 
-    // Actually, `onStatCalculate` context has `owner` and `opponent`.
-    // If *opponent* has Brocade, and *I* am calculating stat... 
-    // No, `activeSkills` only iterates `owner`'s skills.
-    // **Compromise**: We will add a special `CommonSkill` or handle `brocadeDebuff` in the generic engine for now, 
-    // OR simply let Brocade modify the opponent's properties directly in `onRoundStart`?
-    // Modifying `deadliness` directly is bad because it resets next calc.
-    // Let's go with: `combatLogic.ts` `getStat` will simply check `c.skillState.brocadeDebuff` generic field.
-    // This is a small leak of logic but keeps things sane.
 
     // 5. Three Prince (Red Lotus) - Reflect
     'red_lotus': {
@@ -114,25 +94,14 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         prob: 50,
         onBeforeReceiveDamage: (ctx) => {
             if (ctx.isBlocked && !ctx.reflected && check(50)) {
-                // Return value implies modification, but we also want side effects (new damage)
-                // The hook system allows us to trigger a new damage event.
-                // But we must be careful not to recurse infinitely. `reflected` flag prevents this.
-                const reflectedAmt = Math.min(ctx.hpDmg, ctx.owner.damageReduce); // Approximate "reduced amount"
+                const reflectedAmt = Math.min(ctx.hpDmg, ctx.owner.damageReduce); 
                 if (reflectedAmt > 0) {
                      log(ctx, `红莲：反弹${reflectedAmt}伤害！`);
-                     // We need a way to deal damage back. The context doesn't expose `handleDamage`.
-                     // Design limitation. We will attach a request to the return object.
-                     // For simplicity in this iteration: direct mutation + log, 
-                     // knowing it bypasses standard "onReceiveDamage" of the attacker (simplification).
-                     // Or, we assume the engine handles "reflect" property in return.
-                     // Let's define: If we return `reflect: number`, engine handles it.
+                     // Reflected logic handled in Engine usually, but here we just log for now
                      return { } as any; 
                 }
             }
         }
-        // NOTE: Due to complexity of "Reflect" triggering a full damage cycle (which might trigger THIS skill again),
-        // we will implement Reflect logic specifically in the engine's interpretation of these hooks.
-        // See combatLogic.ts update.
     },
 
     // 6. Sky Blue (Tian Guang) - Meta Skill
@@ -151,8 +120,6 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         prob: 50,
         onBeforeReceiveDamage: (ctx) => {
             if ((ctx.isBlocked || ctx.isCrit) && !ctx.reflected && check(50)) {
-                 // Counter logic needs access to stats.
-                 // We will tag the context to trigger a counter-attack event in engine
                  return { counterAttack: true } as any; 
             }
         }
@@ -163,24 +130,9 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         id: 'spear_death',
         name: '夺命',
         prob: 50,
-        onAfterDealDamage: (ctx) => {
-            // Wait, this modifies damage *before* it applies.
-            // Should be onBeforeDealDamage or we treat it as modification.
-            // Let's use `onStatCalculate`? No, it doubles final damage.
-            // We need `onBeforeDamageDealt`. `onBeforeReceiveDamage` is for defender.
-            // Let's use `onBeforeReceiveDamage` but iterate ATTACKER's skills too?
-            // Yes, the engine should check Attacker's modifiers.
-        }
+        // Logic handled in `resolveStrike` inside combatLogic.ts
     },
 
-    // REVISED ARCHITECTURE NOTE:
-    // `resolveStrike` will check:
-    // 1. Attacker.onBeforeAttack (e.g. Yellow Horse)
-    // 2. Defender.onBeforeReceiveAttack (e.g. Yellow Horse)
-    // 3. Calc Damage
-    // 4. Attacker.onModifyDamage (Spear)
-    // 5. Defender.onIncomingDamage (Iron Bullet, Monk, Red Lotus)
-    
     // 9. Iron Bullet (Iron Shell)
     'iron_shell': {
         id: 'iron_shell',
@@ -194,12 +146,14 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         }
     },
 
-    // 10. Monk (Immovable)
+    // 10. Monk (Immovable) - BALANCE CHANGE: 100% -> 50%
     'immovable': {
         id: 'immovable',
         name: '不动',
-        prob: 100,
+        prob: 50, 
         onBeforeReceiveDamage: (ctx) => {
+            if (!check(50)) return; // Added check for probability
+
             let mod: Partial<DamageContext> = {};
             if (ctx.hpDmg > 0) {
                 ctx.owner.currentSp = Math.min(ctx.owner.sp, ctx.owner.currentSp + ctx.hpDmg);
@@ -348,12 +302,6 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         id: 'poison_cone',
         name: '毒锥',
         prob: 100,
-        // Handled via check logic in engine usually, but we can do it via `onBeforeAttack`?
-        // No, it triggers an *extra* attack.
-        // Let's use `onAfterDealDamage` to check thresholds and trigger extra?
-        // Or `onBeforeAttack` to modify the CURRENT attack to be crit?
-        // The original logic checks thresholds separately.
-        // We will implement `onBeforeAttack` to FORCE CRIT if threshold met.
         onBeforeAttack: (ctx) => {
              const c = ctx.owner;
              if (!c.skillState.needleTriggered) c.skillState.needleTriggered = { hp: false, sp: false };
@@ -380,22 +328,15 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         id: 'run_horse',
         name: '跑马',
         prob: 66,
-        onBeforeAttack: (ctx) => {
+        onBeforeAttack: (_ctx) => { // Unused context marked with _
             // As attacker: prevent block
              if (check(66)) {
-                 // log(ctx, `跑马：无视格挡！`); // Too spammy?
                  return { avoidBlock: true };
              }
         },
         onBeforeReceiveDamage: (ctx) => {
             // As defender: prevent crit (incoming isCrit)
             if (ctx.isCrit && check(66)) {
-                 // log(ctx, `跑马：规避暴击！`);
-                 // To "Avoid Crit", we have to tell the engine to recalculate damage as normal?
-                 // Or we accept it's a crit but treat it as normal?
-                 // Complex. The engine resolves Crit before calling this.
-                 // We need `onReceiveAttack` before damage calc.
-                 // We will simply set `isCrit` to false in the returned context modification.
                  return { isCrit: false };
             }
         }
@@ -427,14 +368,7 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         id: 'soul_taking',
         name: '摄魂',
         prob: 100,
-        // Active attack deals Vigor damage as SP even if no crit
-        // Implementation: Modify damage in `onBeforeDealDamage` (which we map to `onBeforeReceiveDamage` of opponent or new hook?)
-        // Let's use `onBeforeAttack`? No, that's for flags.
-        // We'll treat this as a special rule in engine OR:
-        // Attacker's skill modifies the *outgoing* damage.
-        // We lack `onBeforeDealDamage` hook in interface.
-        // Let's implement it via `onBeforeReceiveDamage` on the *Attacker's* skill list?
-        // Engine update needed: "Apply Attacker Modifiers" then "Apply Defender Modifiers".
+        // Logic handled in resolveStrike
     },
     
     // 21. True Colors (True Blood)
