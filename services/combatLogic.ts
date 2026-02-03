@@ -378,7 +378,12 @@ export const resolveStrike = (
 };
 
 // Returns 0 if P1 wins, 1 if P2 wins
-export const runInstantBattle = (c1: CricketData, c2: CricketData, skillsEnabled: boolean = false): number => {
+export const runInstantBattle = (
+    c1: CricketData, 
+    c2: CricketData, 
+    skillsEnabled: boolean = false,
+    onLongBattle?: (state: CombatState) => void
+): number => {
     let state: CombatState = {
       round: 0, phase: Phase.Setup, logs: [],
       p1: createRuntimeCricket(c1), p2: createRuntimeCricket(c2),
@@ -395,12 +400,19 @@ export const runInstantBattle = (c1: CricketData, c2: CricketData, skillsEnabled
     let attackerIsP1 = false;
     let counterCount = 0;
     let lastCrit = false;
+    let warned = false;
 
     while (!state.winnerId && loops < MAX) {
         loops++;
         if (state.phase === Phase.Setup) state.phase = Phase.PreFight;
         else if (state.phase === Phase.PreFight) state = processPreFight(state);
         else if (state.phase === Phase.VigorCheck) {
+            // Check for Long Battle Warning
+            if (state.round === 100 && !warned && onLongBattle) {
+                warned = true;
+                onLongBattle(state);
+            }
+
             const res = processVigorCheck(state);
             state = res.state;
             p1Initiative = res.p1Initiative;

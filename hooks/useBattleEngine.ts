@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { CombatState, Phase, LogType, CricketData } from '../types';
+import { CombatState, Phase, LogType, CricketData, BattleLog } from '../types';
 import { createRuntimeCricket, processPreFight, processVigorCheck, resolveStrike, checkProb, checkGameOver, runInstantBattle, getStat } from '../services/combatLogic';
 import { CRICKET_TEMPLATES } from '../constants';
 
@@ -77,13 +77,20 @@ export const useBattleEngine = () => {
       const results: string[] = [];
       const opponents = CRICKET_TEMPLATES.filter(c => c.id !== c1.id);
       
+      const warningLogs: string[] = [];
+      const onLong = (s: CombatState) => {
+          if (warningLogs.length < 50) {
+              warningLogs.push(`[100轮] ${s.p1.name}(${s.p1.currentHp}/${s.p1.currentSp}) vs ${s.p2.name}(${s.p2.currentHp}/${s.p2.currentSp})`);
+          }
+      };
+
       // Async loop
       for(let i=0; i<opponents.length; i++) {
           const opp = opponents[i];
           let wins = 0;
           const BATTLES = 10000;
           for(let k=0; k<BATTLES; k++) {
-              const result = runInstantBattle(c1, opp, skillsEnabled);
+              const result = runInstantBattle(c1, opp, skillsEnabled, onLong);
               if(result === 0) wins++;
           }
           const rate = ((wins / BATTLES) * 100).toFixed(1);
@@ -94,8 +101,13 @@ export const useBattleEngine = () => {
           await new Promise(r => setTimeout(r, 0));
       }
 
+      let msg = results.join('\n');
+      if (warningLogs.length > 0) {
+          msg += `\n\n--- 异常长局记录 (前50条) ---\n` + warningLogs.join('\n');
+      }
+
       setSimulationResults({
-          message: results.join('\n'),
+          message: msg,
           type: 'winrate'
       });
       setIsCalculating(false);
@@ -112,6 +124,18 @@ export const useBattleEngine = () => {
       const count = crickets.length;
       const tempData: { name: string, rates: number[], average: number }[] = [];
       const BATTLES = 10000;
+      
+      const warningLogs: BattleLog[] = [];
+      const onLong = (s: CombatState) => {
+          if (warningLogs.length < 50) {
+              warningLogs.push({
+                  id: Math.random().toString(),
+                  turn: 100,
+                  message: `[长局预警] ${s.p1.name}(${s.p1.currentHp}/${s.p1.currentSp}) vs ${s.p2.name}(${s.p2.currentHp}/${s.p2.currentSp})`,
+                  type: LogType.Info
+              });
+          }
+      };
 
       for(let i = 0; i < count; i++) {
           const row: number[] = [];
@@ -126,7 +150,7 @@ export const useBattleEngine = () => {
                   let wins = 0;
                   // Inner loop: run battles
                   for(let k = 0; k < BATTLES; k++) {
-                      const result = runInstantBattle(crickets[i], crickets[j], skillsEnabled);
+                      const result = runInstantBattle(crickets[i], crickets[j], skillsEnabled, onLong);
                       if (result === 0) wins++;
                   }
                   const rate = Math.round((wins / BATTLES) * 100);
@@ -174,6 +198,14 @@ export const useBattleEngine = () => {
           names: newNames,
           grid: finalGrid,
           averages: tempData.map(d => d.average)
+      });
+
+      // Update logs in combatState so they appear in right column
+      setCombatState({
+          round: 0, phase: Phase.Setup, logs: warningLogs,
+          p1: createRuntimeCricket(crickets[0]), 
+          p2: createRuntimeCricket(crickets[1]), 
+          winnerId: null, autoPlay: false, battleSpeed: 0, skillsEnabled
       });
 
       setSimulationResults({
