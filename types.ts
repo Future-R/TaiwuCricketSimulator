@@ -19,21 +19,17 @@ export interface CricketData {
   defence: number; // 防御 (Block Chance)
   damageReduce: number; // 减伤 (Block Reduction)
   counter: number; // 反击 (Counter Chance)
+  skillIds?: string[]; // New: List of skills this cricket has
 }
 
 export interface SkillState {
-  needleTriggered: { hp: boolean, sp: boolean, dur: boolean };
-  jadeHoeStack: number;
-  trueColorTriggered: boolean;
-  grassBuff: { stat: 'bite' | 'strength' | 'vigor', value: number } | null;
-  brocadeDebuff: { stat: 'deadliness' | 'defence' | 'counter', value: number } | null;
-  fanShengStack: number; // Strength added
-  jadeTailStack: number; // Bite added
-  plumWingStack: number; // Vigor added
-  eightFailuresStack: { bite: number, strength: number, vigor: number };
+  // Generic state storage for skills (counters, stacks, flags)
+  // We use a flexible Record to avoid hardcoding specific skill fields here
+  [key: string]: any; 
 }
 
 export interface RuntimeCricket extends CricketData {
+  uniqueId: string; // Unique instance ID for battle logic
   currentHp: number;
   currentSp: number;
   currentDurability: number;
@@ -48,6 +44,7 @@ export interface RuntimeCricket extends CricketData {
   isDead: boolean;
   isLost: boolean; // Lost due to SP 0
   skillState: SkillState;
+  activeSkills: SkillDefinition[]; // Resolved skills
 }
 
 export enum LogType {
@@ -91,4 +88,60 @@ export interface CombatState {
   autoPlay: boolean;
   battleSpeed: number; // ms delay
   skillsEnabled: boolean;
+}
+
+// --- Hook Contexts ---
+
+export interface BattleContext {
+  state: CombatState;
+  owner: RuntimeCricket;
+  opponent: RuntimeCricket;
+  logs: { msg: string; type: LogType }[];
+}
+
+export interface DamageContext extends BattleContext {
+  hpDmg: number;
+  spDmg: number;
+  durDmg: number;
+  isCrit: boolean;
+  isBlocked: boolean;
+  sourceType: 'vigor' | 'bite' | 'strength' | 'other';
+  reflected?: boolean; // If true, this is a reflected attack
+  actualHpDmg?: number;
+  actualSpDmg?: number;
+}
+
+export interface StatContext {
+  owner: RuntimeCricket;
+  opponent: RuntimeCricket;
+  stat: 'vigor'|'strength'|'bite'|'deadliness'|'defence'|'counter'|'critDamage';
+  baseValue: number;
+}
+
+// --- Skill Definition ---
+
+export interface SkillDefinition {
+  id: string;
+  name: string;
+  prob: number; // Activation probability (0-100)
+  
+  // Hooks
+  onBattleStart?: (ctx: BattleContext) => void;
+  onRoundStart?: (ctx: BattleContext) => void;
+  
+  // Return modified stat value
+  onStatCalculate?: (ctx: StatContext) => number; 
+  
+  // Intercept incoming damage (Defender skills)
+  // Returns modified DamageContext components (hp, sp, etc) or null if no change
+  onBeforeReceiveDamage?: (ctx: DamageContext) => Partial<DamageContext> | void;
+  
+  // Trigger after dealing damage (Attacker skills)
+  onAfterDealDamage?: (ctx: DamageContext) => void;
+  
+  // Trigger after receiving damage (Defender skills)
+  onAfterReceiveDamage?: (ctx: DamageContext) => void;
+
+  // Trigger before performing an attack (Attacker skills) - e.g. prevent block/crit
+  onBeforeAttack?: (ctx: BattleContext) => { avoidBlock?: boolean, avoidCrit?: boolean, forceCrit?: boolean } | void;
 }

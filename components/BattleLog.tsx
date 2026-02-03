@@ -16,7 +16,7 @@ export const BattleLogViewer: React.FC<Props> = ({ logs }) => {
     switch (type) {
       case LogType.Attack: return 'text-zinc-300';
       case LogType.Crit: return 'text-red-400 font-bold';
-      case LogType.Block: return 'text-zinc-500 italic';
+      case LogType.Block: return 'text-zinc-500';
       case LogType.Damage: return 'text-orange-400';
       case LogType.Counter: return 'text-purple-400';
       case LogType.Win: return 'text-amber-400 font-black text-lg py-3 border-t border-zinc-700 mt-2 text-center';

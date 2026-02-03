@@ -1,3 +1,4 @@
+
 import { CricketData } from './types';
 
 export const CRICKET_TEMPLATES: CricketData[] = [
@@ -16,6 +17,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 0,
     damageReduce: 0,
     counter: 0,
+    skillIds: []
   },
   {
     id: 'needle',
@@ -32,6 +34,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 0,
     damageReduce: 0,
     counter: 50,
+    skillIds: ['poison_cone']
   },
   {
     id: 'spear',
@@ -48,6 +51,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 0,
     damageReduce: 0,
     counter: 100,
+    skillIds: ['spear_death']
   },
   {
     id: 'bell',
@@ -64,6 +68,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 0,
     damageReduce: 0,
     counter: 40,
+    skillIds: ['soul_taking']
   },
   {
     id: 'yellow_horse',
@@ -80,6 +85,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 55,
     damageReduce: 10,
     counter: 120,
+    skillIds: ['run_horse']
   },
   {
     id: 'jade_hoe',
@@ -96,6 +102,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 30,
     damageReduce: 8,
     counter: 45,
+    skillIds: ['raise_sword']
   },
   {
     id: 'armor',
@@ -112,6 +119,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 80,
     damageReduce: 5,
     counter: 70,
+    skillIds: ['black_armor']
   },
   {
     id: 'fan_sheng',
@@ -128,6 +136,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 0,
     damageReduce: 0,
     counter: 95,
+    skillIds: ['brave']
   },
   {
     id: 'cinnabar',
@@ -144,6 +153,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 30,
     damageReduce: 8,
     counter: 40,
+    skillIds: ['cinnabar_evil']
   },
   {
     id: 'monk',
@@ -160,6 +170,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 45,
     damageReduce: 18,
     counter: 45,
+    skillIds: ['immovable']
   },
   {
     id: 'iron_bullet',
@@ -176,6 +187,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 35,
     damageReduce: 10,
     counter: 65,
+    skillIds: ['iron_shell']
   },
   {
     id: 'red_beard',
@@ -192,6 +204,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 30,
     damageReduce: 8,
     counter: 50,
+    skillIds: ['sacrifice']
   },
   {
     id: 'jade_tail',
@@ -208,6 +221,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 0,
     damageReduce: 0,
     counter: 40,
+    skillIds: ['break_force']
   },
   {
     id: 'lamp',
@@ -224,6 +238,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 60,
     damageReduce: 8,
     counter: 75,
+    skillIds: ['hundred_battles']
   },
   {
     id: 'tricolor',
@@ -240,6 +255,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 45,
     damageReduce: 10,
     counter: 40,
+    skillIds: ['true_blood']
   },
   {
     id: 'grass',
@@ -256,6 +272,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 25,
     damageReduce: 15,
     counter: 55,
+    skillIds: ['grass_talent']
   },
   {
     id: 'purple_yellow',
@@ -272,6 +289,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 20,
     damageReduce: 20,
     counter: 45,
+    skillIds: ['change']
   },
   {
     id: 'plum_wing',
@@ -288,6 +306,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 0,
     damageReduce: 0,
     counter: 80,
+    skillIds: ['spirit_channel']
   },
   {
     id: 'sky_blue',
@@ -304,6 +323,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 35,
     damageReduce: 15,
     counter: 45,
+    skillIds: ['tian_guang']
   },
   {
     id: 'brocade',
@@ -320,6 +340,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 30,
     damageReduce: 10,
     counter: 50,
+    skillIds: ['brocade_intimidate']
   },
   {
     id: 'three_prince',
@@ -336,6 +357,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 75,
     damageReduce: 50,
     counter: 85,
+    skillIds: ['red_lotus']
   },
   {
     id: 'eight_failures',
@@ -352,7 +374,9 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 95,
     damageReduce: 25,
     counter: 800,
+    skillIds: ['reverse_fate']
   },
+  // Add more low grade ones without skills
   {
     id: 'zhen_qing',
     name: '真青',
@@ -368,6 +392,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 35,
     damageReduce: 10,
     counter: 65,
+    skillIds: []
   },
   {
     id: 'zhen_huang',
@@ -384,6 +409,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 30,
     damageReduce: 12,
     counter: 45,
+    skillIds: []
   },
   {
     id: 'zhen_zi',
@@ -400,6 +426,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 25,
     damageReduce: 15,
     counter: 50,
+    skillIds: []
   },
   {
     id: 'zhen_hong',
@@ -416,6 +443,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 0,
     damageReduce: 0,
     counter: 55,
+    skillIds: []
   },
   {
     id: 'zhen_wu',
@@ -432,6 +460,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 50,
     damageReduce: 8,
     counter: 80,
+    skillIds: []
   },
   {
     id: 'zhen_bai',
@@ -448,5 +477,6 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 0,
     damageReduce: 0,
     counter: 60,
+    skillIds: []
   }
 ];

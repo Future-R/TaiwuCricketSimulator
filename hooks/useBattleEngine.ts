@@ -1,6 +1,7 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { CombatState, Phase, RuntimeCricket, LogType, CricketData } from '../types';
-import { createRuntimeCricket, processPreFight, processVigorCheck, resolveStrike, checkProb, checkGameOver, runInstantBattle } from '../services/combatLogic';
+import { createRuntimeCricket, processPreFight, processVigorCheck, resolveStrike, checkProb, checkGameOver, runInstantBattle, getStat } from '../services/combatLogic';
 import { CRICKET_TEMPLATES } from '../constants';
 
 const DELAY = 800; // ms between steps
@@ -55,8 +56,8 @@ export const useBattleEngine = () => {
     
     let p1Wins = 0;
     for(let i = 0; i < count; i++) {
-        const winnerId = runInstantBattle(c1, c2, skillsEnabled);
-        if(winnerId === c1.id) p1Wins++;
+        const result = runInstantBattle(c1, c2, skillsEnabled);
+        if(result === 0) p1Wins++;
     }
     const p2Wins = count - p1Wins;
     setSimulationResults({
@@ -80,10 +81,10 @@ export const useBattleEngine = () => {
       for(let i=0; i<opponents.length; i++) {
           const opp = opponents[i];
           let wins = 0;
-          const BATTLES = 1000;
+          const BATTLES = 10000;
           for(let k=0; k<BATTLES; k++) {
-              const wid = runInstantBattle(c1, opp, skillsEnabled);
-              if(wid === c1.id) wins++;
+              const result = runInstantBattle(c1, opp, skillsEnabled);
+              if(result === 0) wins++;
           }
           const rate = ((wins / BATTLES) * 100).toFixed(1);
           results.push(`${opp.name}: ${rate}%`);
@@ -125,8 +126,8 @@ export const useBattleEngine = () => {
                   let wins = 0;
                   // Inner loop: run battles
                   for(let k = 0; k < BATTLES; k++) {
-                      const wid = runInstantBattle(crickets[i], crickets[j], skillsEnabled);
-                      if (wid === crickets[i].id) wins++;
+                      const result = runInstantBattle(crickets[i], crickets[j], skillsEnabled);
+                      if (result === 0) wins++;
                   }
                   const rate = Math.round((wins / BATTLES) * 100);
                   row.push(rate);
@@ -222,33 +223,16 @@ export const useBattleEngine = () => {
         case Phase.FirstHalf:
         case Phase.SecondHalf:
           const isFirstHalf = newState.phase === Phase.FirstHalf;
-          // const isInitiatorP1 = isFirstHalf ? p1Initiative : !p1Initiative; // Removed unused variable
           
           const attacker = currentAttackerIsP1 ? newState.p1 : newState.p2;
           const defender = currentAttackerIsP1 ? newState.p2 : newState.p1;
           const isInitialAttack = counterCount === 0;
           
-          // Manual calculation to match `getStat`
-          const getStatLocal = (c: RuntimeCricket, stat: 'bite'|'strength') => {
-             let val = c[stat];
-             if(stat === 'bite') val -= c.injuries.bite;
-             if(stat === 'strength') val -= c.injuries.strength;
-             
-             if(stat === 'strength') val += c.skillState.fanShengStack;
-             if(stat === 'bite') val += c.skillState.jadeTailStack;
-             
-             if(stat === 'bite') val += c.skillState.eightFailuresStack.bite;
-             if(stat === 'strength') val += c.skillState.eightFailuresStack.strength;
-             
-             if(c.skillState.grassBuff?.stat === stat) val = Math.ceil(val * 2);
-             if(c.skillState.trueColorTriggered) val = Math.ceil(val * 1.5);
-             
-             return Math.max(0, val);
-          };
+          // Use shared logic for stat retrieval
+          let counterChance = getStat(attacker, defender, 'counter');
           
-          let counterChance = attacker.counter;
           if (attacker.skillState.trueColorTriggered) counterChance = Math.ceil(counterChance * 1.5);
-          if (attacker.skillState.brocadeDebuff?.stat === 'counter') counterChance = 0;
+          if (attacker.skillState.brocadeDebuff === 'counter') counterChance = 0;
 
           if (!isInitialAttack) {
               const chance = counterChance - (counterCount - 1) * 5;
@@ -272,8 +256,8 @@ export const useBattleEngine = () => {
 
           const useBite = currentAttackerIsP1 === (isFirstHalf ? p1Initiative : !p1Initiative);
           const statVal = useBite 
-            ? getStatLocal(attacker, 'bite')
-            : getStatLocal(attacker, 'strength');
+            ? getStat(attacker, defender, 'bite')
+            : getStat(attacker, defender, 'strength');
 
           const strikeRes = resolveStrike(attacker, defender, statVal, lastHitWasCrit, false, skillsEnabled);
           
@@ -291,10 +275,14 @@ export const useBattleEngine = () => {
           newState.logs = [...newState.logs, ...newLogObjs];
 
           if (checkGameOver(newState.p1, newState.p2)) {
+              // Note: checkGameOver now returns uniqueId, not template Id.
+              // CombatState uses winnerId to stop loop.
+              // We just need a non-null string.
               const winnerId = checkGameOver(newState.p1, newState.p2)!;
               setIsPlaying(false);
               
-              const winner = winnerId === newState.p1.id ? newState.p1 : newState.p2;
+              // Find who matches uniqueId for correct Name logging
+              const winner = winnerId === newState.p1.uniqueId ? newState.p1 : newState.p2;
               const msg = `战斗结束！胜者：${winner.name} (耐久: ${winner.currentDurability}/${winner.maxDurability}, 耐力: ${winner.currentHp}/${winner.hp}, 斗性: ${winner.currentSp}/${winner.sp})`;
               
               const finalLog = {
