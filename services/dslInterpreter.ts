@@ -116,6 +116,14 @@ const parseActionValue = (valStr: string, ctx: any): number => {
 // Maps a skill to a map of hooks, where each hook has a list of relevant DSL sentences to execute.
 const dslCache = new Map<string, Map<string, string[]>>();
 
+export const clearDSLCache = (skillId?: string) => {
+    if (skillId) {
+        dslCache.delete(skillId);
+    } else {
+        dslCache.clear();
+    }
+};
+
 const parseAndCacheDSL = (skillId: string, dsl: string) => {
     const hookMap = new Map<string, string[]>();
     const sentences = dsl.split(/[;；]/);

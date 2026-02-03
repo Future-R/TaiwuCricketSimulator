@@ -9,6 +9,7 @@ import { BattleLogViewer } from './components/BattleLog';
 import { useBattleEngine } from './hooks/useBattleEngine';
 import { Search, Zap, ZapOff, Loader2, List, Swords, ScrollText, Upload, Download, FileJson, Settings2 } from 'lucide-react';
 import { CricketData, SkillDefinition } from './types';
+import { executeDSL, clearDSLCache } from './services/dslInterpreter';
 
 const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -18,7 +19,17 @@ const App: React.FC = () => {
   const [simCount, setSimCount] = useState<number>(10000);
   
   // Combine defaults with imported
-  const allCrickets = useMemo(() => [...CRICKET_TEMPLATES, ...customCrickets], [customCrickets]);
+  const allCrickets = useMemo(() => {
+      // Create a map to ensure IDs are unique, prioritizing custom/imported ones if they share IDs with templates
+      // OR prioritize templates? Usually imports are meant to be addons or overrides.
+      // Let's assume we append custom ones. If IDs match, the LAST one in the array usually wins in find() logic,
+      // but here we just display list.
+      // To handle updates properly, we should merge.
+      const map = new Map<string, CricketData>();
+      CRICKET_TEMPLATES.forEach(c => map.set(c.id, c));
+      customCrickets.forEach(c => map.set(c.id, c));
+      return Array.from(map.values());
+  }, [customCrickets]);
 
   // Update Default Selection
   const [p1Data, setP1Data] = useState(CRICKET_TEMPLATES.find(c => c.id === 'three_prince') || CRICKET_TEMPLATES[0]);
@@ -77,8 +88,15 @@ const App: React.FC = () => {
           try {
               const json = JSON.parse(event.target?.result as string);
               if (Array.isArray(json)) {
-                  setCustomCrickets(prev => [...prev, ...json]);
-                  alert(`成功导入 ${json.length} 只促织配置！`);
+                  setCustomCrickets(prev => {
+                      // Merge strategies:
+                      // Create a map from existing custom crickets
+                      const map = new Map(prev.map(c => [c.id, c]));
+                      // Overwrite or add with new ones
+                      json.forEach((c: CricketData) => map.set(c.id, c));
+                      return Array.from(map.values());
+                  });
+                  alert(`成功导入/更新 ${json.length} 只促织配置！`);
               }
           } catch (err) {
               alert('导入失败，JSON格式错误');
@@ -111,20 +129,49 @@ const App: React.FC = () => {
               const json = JSON.parse(event.target?.result as string);
               if (Array.isArray(json)) {
                   let updatedCount = 0;
-                  // Update existing registry values. 
+                  
                   json.forEach((s: Partial<SkillDefinition>) => {
-                      if (s.id && SKILL_REGISTRY[s.id]) {
-                          if (s.name) SKILL_REGISTRY[s.id].name = s.name;
-                          if (s.prob !== undefined) SKILL_REGISTRY[s.id].prob = s.prob;
-                          if (s.dsl) SKILL_REGISTRY[s.id].dsl = s.dsl; // Allow DSL import
-                          if (s.shout) SKILL_REGISTRY[s.id].shout = s.shout;
+                      if (s.id) {
+                          // 1. Invalidate DSL Cache for this skill so new DSL string takes effect
+                          clearDSLCache(s.id);
+
+                          if (SKILL_REGISTRY[s.id]) {
+                              // Update existing
+                              const existing = SKILL_REGISTRY[s.id];
+                              if (s.name) existing.name = s.name;
+                              if (s.prob !== undefined) existing.prob = s.prob;
+                              if (s.dsl) existing.dsl = s.dsl; // Allow DSL import
+                              if (s.shout) existing.shout = s.shout;
+                          } else {
+                              // Create New Skill
+                              SKILL_REGISTRY[s.id] = {
+                                  id: s.id,
+                                  name: s.name || s.id,
+                                  dsl: s.dsl,
+                                  shout: s.shout,
+                                  prob: s.prob,
+                                  // Map hooks to DSL executor
+                                  onBattleStart: (ctx, skill) => executeDSL(skill.dsl, 'onBattleStart', ctx, skill),
+                                  onRoundStart: (ctx, skill) => executeDSL(skill.dsl, 'onRoundStart', ctx, skill),
+                                  onDefeat: (ctx, skill) => executeDSL(skill.dsl, 'onDefeat', ctx, skill),
+                                  onStatCalculate: (ctx, skill) => {
+                                      const val = executeDSL(skill.dsl, 'onStatCalculate', ctx, skill);
+                                      return typeof val === 'number' ? val : ctx.baseValue;
+                                  },
+                                  onBeforeReceiveDamage: (ctx, skill) => executeDSL(skill.dsl, 'onBeforeReceiveDamage', ctx, skill),
+                                  onAfterDealDamage: (ctx, skill) => executeDSL(skill.dsl, 'onAfterDealDamage', ctx, skill),
+                                  onAfterReceiveDamage: (ctx, skill) => executeDSL(skill.dsl, 'onAfterReceiveDamage', ctx, skill),
+                                  onBeforeAttack: (ctx, skill) => executeDSL(skill.dsl, 'onBeforeAttack', ctx, skill),
+                              } as SkillDefinition;
+                          }
                           updatedCount++;
                       }
                   });
                   setSkillRegistryVersion(v => v + 1); // Trigger re-render of previews
-                  alert(`成功更新 ${updatedCount} 个技能配置！`);
+                  alert(`成功更新/添加 ${updatedCount} 个技能配置！`);
               }
           } catch (err) {
+              console.error(err);
               alert('技能导入失败，JSON格式错误');
           }
       };
