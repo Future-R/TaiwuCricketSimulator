@@ -67,7 +67,7 @@ export const useBattleEngine = () => {
   };
 
   // Find Win Rate vs All
-  const calculateWinRates = async (c1: CricketData) => {
+  const calculateWinRates = async (c1: CricketData, count: number = 10000) => {
       setIsPlaying(false);
       setCombatState(null);
       setMatrixData(null);
@@ -88,7 +88,7 @@ export const useBattleEngine = () => {
       for(let i=0; i<opponents.length; i++) {
           const opp = opponents[i];
           let wins = 0;
-          const BATTLES = 10000;
+          const BATTLES = count;
           for(let k=0; k<BATTLES; k++) {
               const result = runInstantBattle(c1, opp, skillsEnabled, onLong);
               if(result === 0) wins++;
@@ -113,17 +113,17 @@ export const useBattleEngine = () => {
       setIsCalculating(false);
   };
 
-  // Calculate Matrix of All vs All (10000 rounds)
-  const calculateMatrixWinRates = async () => {
+  // Calculate Matrix of All vs All
+  const calculateMatrixWinRates = async (count: number = 10000) => {
       setIsPlaying(false);
       setCombatState(null);
       setIsCalculating(true);
       setProgress(0);
       
       const crickets = [...CRICKET_TEMPLATES]; 
-      const count = crickets.length;
+      const countCrickets = crickets.length;
       const tempData: { name: string, rates: number[], average: number }[] = [];
-      const BATTLES = 10000;
+      const BATTLES = count;
       
       const warningLogs: BattleLog[] = [];
       const onLong = (s: CombatState) => {
@@ -137,13 +137,13 @@ export const useBattleEngine = () => {
           }
       };
 
-      for(let i = 0; i < count; i++) {
+      for(let i = 0; i < countCrickets; i++) {
           const row: number[] = [];
           let totalWinRate = 0;
           let opponentsCount = 0;
 
           // Process one row fully then yield
-          for(let j = 0; j < count; j++) {
+          for(let j = 0; j < countCrickets; j++) {
               if (crickets[i].id === crickets[j].id) {
                   row.push(-1); 
               } else {
@@ -167,7 +167,7 @@ export const useBattleEngine = () => {
           });
 
           // Yield to UI and update progress
-          setProgress(Math.round(((i + 1) / count) * 100));
+          setProgress(Math.round(((i + 1) / countCrickets) * 100));
           await new Promise(r => setTimeout(r, 0));
       }
 
@@ -180,12 +180,12 @@ export const useBattleEngine = () => {
       newNames.forEach((n, idx) => nameToNewIndex.set(n, idx));
 
       const finalGrid: number[][] = [];
-      for(let i = 0; i < count; i++) {
+      for(let i = 0; i < countCrickets; i++) {
           const rowData = tempData[i]; // Row for i-th strongest
           const oldRates = rowData.rates;
-          const newRowRates: number[] = new Array(count).fill(0);
+          const newRowRates: number[] = new Array(countCrickets).fill(0);
           
-          for(let oldColIdx = 0; oldColIdx < count; oldColIdx++) {
+          for(let oldColIdx = 0; oldColIdx < countCrickets; oldColIdx++) {
               const opponentName = crickets[oldColIdx].name;
               const value = oldRates[oldColIdx];
               const newColIdx = nameToNewIndex.get(opponentName)!;

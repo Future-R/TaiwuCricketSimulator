@@ -7,7 +7,7 @@ import { CricketCard } from './components/CricketCard';
 import { CricketDetail } from './components/BattleArena';
 import { BattleLogViewer } from './components/BattleLog';
 import { useBattleEngine } from './hooks/useBattleEngine';
-import { Search, Zap, ZapOff, Loader2, List, Swords, ScrollText, Upload, Download, FileJson } from 'lucide-react';
+import { Search, Zap, ZapOff, Loader2, List, Swords, ScrollText, Upload, Download, FileJson, Settings2 } from 'lucide-react';
 import { CricketData, SkillDefinition } from './types';
 
 const App: React.FC = () => {
@@ -15,6 +15,7 @@ const App: React.FC = () => {
   const [customCrickets, setCustomCrickets] = useState<CricketData[]>([]);
   // We use a dummy state to force re-renders when skills are updated, as SKILL_REGISTRY is mutable
   const [skillRegistryVersion, setSkillRegistryVersion] = useState(0); 
+  const [simCount, setSimCount] = useState<number>(10000);
   
   // Combine defaults with imported
   const allCrickets = useMemo(() => [...CRICKET_TEMPLATES, ...customCrickets], [customCrickets]);
@@ -44,8 +45,22 @@ const App: React.FC = () => {
   };
 
   const handleStartVisualBattle = () => { startBattle(p1Data, p2Data); setMobileTab('logs'); };
-  const handleSimulate10000 = () => { simulateBattles(p1Data, p2Data, 10000); setMobileTab('logs'); };
-  const handleCalculateWinRates = async () => { await calculateWinRates(p1Data); setMobileTab('logs'); };
+  const handleSimulateScore = () => { simulateBattles(p1Data, p2Data, simCount); setMobileTab('logs'); };
+  const handleCalculateWinRates = async () => { await calculateWinRates(p1Data, simCount); setMobileTab('logs'); };
+  const handleMatrixWinRates = async () => { await calculateMatrixWinRates(simCount); };
+
+  const handleSimCountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      let val = parseInt(e.target.value);
+      if (isNaN(val)) val = 300;
+      setSimCount(val);
+  };
+
+  const handleSimCountBlur = () => {
+      let val = simCount;
+      if (val < 300) val = 300;
+      if (val > 72900) val = 72900;
+      setSimCount(val);
+  }
 
   const previewP1 = useMemo(() => createRuntimeCricket(p1Data), [p1Data, skillRegistryVersion]);
   const previewP2 = useMemo(() => createRuntimeCricket(p2Data), [p2Data, skillRegistryVersion]);
@@ -236,7 +251,7 @@ const App: React.FC = () => {
           {showMatrix ? (
             <div className="absolute inset-0 z-30 bg-zinc-950 flex flex-col flex-1 overflow-auto p-4 lg:p-6 lg:static">
                 <h2 className="text-xl lg:text-2xl font-bold text-amber-500 mb-4 flex justify-between items-center sticky top-0 bg-zinc-950 z-20 py-2">
-                    <span className="text-sm lg:text-xl">全员对战胜率表 (各10000场)</span>
+                    <span className="text-sm lg:text-xl">全员对战胜率表 (各{simCount}场)</span>
                     <button onClick={resetBattle} className="px-4 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700">关闭</button>
                 </h2>
                 <div className="overflow-x-auto border border-zinc-800 rounded flex-1">
@@ -292,11 +307,29 @@ const App: React.FC = () => {
                             </button>
                             <div className="h-px bg-zinc-800 w-full my-2"></div>
                             <button onClick={handleStartVisualBattle} disabled={isPlaying || isCalculating} className={`w-full py-2 rounded text-sm font-bold shadow transition-all ${isPlaying ? 'bg-zinc-700 text-zinc-500' : 'bg-amber-600 hover:bg-amber-500 text-white'}`}>{isPlaying ? '决斗中...' : '模拟决斗'}</button>
-                            <button onClick={handleSimulate10000} disabled={isPlaying || isCalculating} className="w-full py-2 bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-zinc-200 rounded text-xs">模拟10000场</button>
+                            
+                            <div className="w-full pt-2">
+                                <div className="flex items-center gap-2 mb-1 text-xs text-zinc-500">
+                                    <Settings2 size={12} />
+                                    <span>模拟场次 (300-72900)</span>
+                                </div>
+                                <input 
+                                    type="number" 
+                                    min={300} 
+                                    max={72900} 
+                                    value={simCount} 
+                                    onChange={handleSimCountChange}
+                                    onBlur={handleSimCountBlur}
+                                    disabled={isPlaying || isCalculating}
+                                    className="w-full px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-200 focus:outline-none focus:border-amber-600 text-center"
+                                />
+                            </div>
+
+                            <button onClick={handleSimulateScore} disabled={isPlaying || isCalculating} className="w-full py-2 bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-zinc-200 rounded text-xs">模拟{simCount}场</button>
                             <div className="flex gap-1 mt-2">
                                 <button onClick={handleCalculateWinRates} disabled={isPlaying || isCalculating} className="flex-1 py-2 bg-red-900/30 hover:bg-red-900/50 border border-red-900 text-red-300 rounded text-xs font-bold">单体全胜率</button>
                             </div>
-                            <button onClick={() => calculateMatrixWinRates()} disabled={isPlaying || isCalculating} className="w-full py-2 bg-blue-900/30 hover:bg-blue-900/50 border border-blue-900 text-blue-300 rounded text-xs font-bold">全员胜率表</button>
+                            <button onClick={handleMatrixWinRates} disabled={isPlaying || isCalculating} className="w-full py-2 bg-blue-900/30 hover:bg-blue-900/50 border border-blue-900 text-blue-300 rounded text-xs font-bold">全员胜率表</button>
                             
                             {isCalculating && (
                               <div className="w-full mt-2">
@@ -318,7 +351,7 @@ const App: React.FC = () => {
 
           {/* 3. RIGHT SIDEBAR (Logs) */}
           <div className={`flex-col bg-zinc-900 lg:w-96 lg:flex-shrink-0 border-l border-zinc-800 lg:flex lg:static ${mobileTab === 'logs' ? 'flex absolute inset-0 z-20 w-full' : 'hidden'}`}>
-             <div className="p-3 border-b border-zinc-800 bg-zinc-900 font-bold text-zinc-400 text-sm">{simulationResults?.type === 'winrate' ? '胜率分析 (10000场)' : '战斗过程记录'}</div>
+             <div className="p-3 border-b border-zinc-800 bg-zinc-900 font-bold text-zinc-400 text-sm">{simulationResults?.type === 'winrate' ? `胜率分析 (${simCount}场)` : '战斗过程记录'}</div>
              <div className="flex-1 overflow-hidden relative bg-zinc-900">
                  {simulationResults?.type === 'winrate' ? (<div className="p-4 h-full overflow-y-auto whitespace-pre-line font-mono text-sm leading-6 text-zinc-300">{simulationResults.message}</div>) : (<BattleLogViewer logs={combatState?.logs || []} />)}
              </div>
