@@ -82,6 +82,7 @@ const parseActionValue = (valStr: string, ctx: any): number => {
     let base = 0;
     let ratio = 1;
 
+    // 先确定基数
     if (valStr.includes('伤害量') || valStr.includes('损伤')) {
         base = (ctx.actualHpDmg || 0) + (ctx.actualSpDmg || 0);
     } else if (valStr.includes('牙钳')) {
@@ -89,14 +90,18 @@ const parseActionValue = (valStr: string, ctx: any): number => {
     } else if (valStr.includes('回合数')) {
         base = ctx.state?.round || 0;
     } else {
-        // 纯数字
+        // 纯数字作为基数
         const nums = valStr.match(/\d+/);
-        if (nums) base = parseInt(nums[0]);
+        if (nums && !valStr.includes('%')) base = parseInt(nums[0]);
     }
-
+    
+    // 再确定倍率
     if (valStr.includes('%')) {
         const pct = valStr.match(/(\d+)%/);
         if (pct) ratio = parseInt(pct[1]) / 100;
+        
+        // 特殊情况：如果包含%但之前没匹配到基数（例如 "200%回合数"），
+        // 上面的 base 应该已经由 includes('回合数') 设置好了，这里只处理 ratio
     } else if (valStr.includes('一半')) {
         ratio = 0.5;
     }

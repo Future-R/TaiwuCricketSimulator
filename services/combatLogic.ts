@@ -90,7 +90,12 @@ const triggerHooks = (
         if (skill[hookName]) {
             // Meta-Check: Suppression
             if (canBeNegated && tianGuangSkill && skill.id !== 'tian_guang') { 
-                if (checkProb(tianGuangSkill.prob)) {
+                // Parse prob from DSL "若概率触发(66%)" or fallback to 66
+                let prob = 66;
+                const match = tianGuangSkill.dsl?.match(/概率触发\((\d+)/);
+                if (match) prob = parseInt(match[1]);
+
+                if (checkProb(prob)) {
                     if (ctx.logs) {
                         ctx.logs.push({ msg: `「${tianGuangSkill.shout}」`, type: LogType.Shout });
                         ctx.logs.push({ msg: `【天光】阻止了${owner.name}的【${skill.name}】！`, type: LogType.Skill });
@@ -237,7 +242,12 @@ const handleDamage = (
         defender.activeSkills.forEach(skill => {
             if (skill.onBeforeReceiveDamage) {
                 if (tianGuangSkill && skill.id !== 'tian_guang') {
-                    if (checkProb(tianGuangSkill.prob)) {
+                    // Parse prob from DSL
+                    let prob = 66;
+                    const match = tianGuangSkill.dsl?.match(/概率触发\((\d+)/);
+                    if (match) prob = parseInt(match[1]);
+
+                    if (checkProb(prob)) {
                         logs.push({ msg: `「${tianGuangSkill.shout}」`, type: LogType.Shout });
                         logs.push({ msg: `【天光】阻止了${defender.name}的【${skill.name}】！`, type: LogType.Skill });
                         return;

@@ -125,7 +125,7 @@ export interface StatContext {
 export interface SkillDefinition {
   id: string;
   name: string;
-  prob: number; // Activation probability (0-100)
+  prob?: number; // Activation probability (0-100), optional now
   shout?: string; // Battle cry
   dsl?: string; // Natural Language DSL Configuration
   
