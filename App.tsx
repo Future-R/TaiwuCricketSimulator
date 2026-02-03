@@ -28,7 +28,7 @@ const App: React.FC = () => {
       calculateMatrixWinRates,
       simulationResults,
       matrixData,
-      setSimulationResults,
+      // setSimulationResults, // Removed unused variable
       isPlaying,
       isCalculating,
       progress,

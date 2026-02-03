@@ -1,4 +1,4 @@
-import { BattleLog, CombatState, CricketData, CricketGrade, LogType, Phase, RuntimeCricket } from '../types';
+import { BattleLog, CombatState, CricketData, LogType, Phase, RuntimeCricket } from '../types';
 
 // Helper to check probability
 export const checkProb = (percentage: number): boolean => {
@@ -501,7 +501,7 @@ export const resolveStrike = (
   attacker: RuntimeCricket,
   defender: RuntimeCricket,
   damageStatValue: number, // Bite or Strength depending on context
-  isCritCycle: boolean, // Was the *previous* hit a crit? (Relevant for counter damage)
+  _isCritCycle: boolean, // Prefix with _ to silence unused param warning
   forceCrit: boolean = false, // For skills
   skillsEnabled: boolean = true // Default true to support implicit logic, but caller should override
 ): { att: RuntimeCricket; def: RuntimeCricket; logs: { msg: string; type: LogType }[]; isCrit: boolean } => {
@@ -564,7 +564,7 @@ export const resolveStrike = (
   let hpDamage = 0;
   let spDamage = 0;
   let durDamage = 0;
-  let durabilityLost = false;
+  // let durabilityLost = false; // Removed unused variable
 
   const sourceType = (damageStatValue === getStat(attacker, 'bite')) ? 'bite' : 'strength';
 
@@ -631,7 +631,7 @@ export const resolveStrike = (
       hpDamage = rawHpDmg;
       spDamage = rawSpDmg;
       durDamage = 1; // Unblocked crit reduces durability by 1
-      durabilityLost = true;
+      // durabilityLost = true; // Removed unused variable
       logs.push({ msg: `${defender.name} 受到重创！(耐久 -1)`, type: LogType.Damage });
     }
   }

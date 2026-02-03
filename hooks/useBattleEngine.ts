@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { CombatState, Phase, RuntimeCricket, BattleLog, LogType, CricketData } from '../types';
+import { CombatState, Phase, RuntimeCricket, LogType, CricketData } from '../types';
 import { createRuntimeCricket, processPreFight, processVigorCheck, resolveStrike, checkProb, checkGameOver, runInstantBattle } from '../services/combatLogic';
 import { CRICKET_TEMPLATES } from '../constants';
 
@@ -222,7 +222,7 @@ export const useBattleEngine = () => {
         case Phase.FirstHalf:
         case Phase.SecondHalf:
           const isFirstHalf = newState.phase === Phase.FirstHalf;
-          const isInitiatorP1 = isFirstHalf ? p1Initiative : !p1Initiative; 
+          // const isInitiatorP1 = isFirstHalf ? p1Initiative : !p1Initiative; // Removed unused variable
           
           const attacker = currentAttackerIsP1 ? newState.p1 : newState.p2;
           const defender = currentAttackerIsP1 ? newState.p2 : newState.p1;
