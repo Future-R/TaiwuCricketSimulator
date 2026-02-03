@@ -58,6 +58,7 @@ export enum LogType {
   Win = 'win',
   Lose = 'lose',
   Skill = 'skill',
+  Shout = 'shout', // New: Skill Shout
 }
 
 export interface BattleLog {
@@ -124,24 +125,27 @@ export interface SkillDefinition {
   id: string;
   name: string;
   prob: number; // Activation probability (0-100)
+  shout?: string; // Battle cry
+  dsl?: string; // Natural Language DSL Configuration
   
-  // Hooks
-  onBattleStart?: (ctx: BattleContext) => void;
-  onRoundStart?: (ctx: BattleContext) => void;
+  // Hooks now receive the skill definition itself as the second argument
+  onBattleStart?: (ctx: BattleContext, skill: SkillDefinition) => void;
+  onRoundStart?: (ctx: BattleContext, skill: SkillDefinition) => void;
+  onDefeat?: (ctx: BattleContext, skill: SkillDefinition) => void; // New: Trigger when defeated
   
   // Return modified stat value
-  onStatCalculate?: (ctx: StatContext) => number; 
+  onStatCalculate?: (ctx: StatContext, skill: SkillDefinition) => number; 
   
   // Intercept incoming damage (Defender skills)
   // Returns modified DamageContext components (hp, sp, etc) or null if no change
-  onBeforeReceiveDamage?: (ctx: DamageContext) => Partial<DamageContext> | void;
+  onBeforeReceiveDamage?: (ctx: DamageContext, skill: SkillDefinition) => Partial<DamageContext> | void;
   
   // Trigger after dealing damage (Attacker skills)
-  onAfterDealDamage?: (ctx: DamageContext) => void;
+  onAfterDealDamage?: (ctx: DamageContext, skill: SkillDefinition) => void;
   
   // Trigger after receiving damage (Defender skills)
-  onAfterReceiveDamage?: (ctx: DamageContext) => void;
+  onAfterReceiveDamage?: (ctx: DamageContext, skill: SkillDefinition) => void;
 
   // Trigger before performing an attack (Attacker skills) - e.g. prevent block/crit
-  onBeforeAttack?: (ctx: BattleContext) => { avoidBlock?: boolean, avoidCrit?: boolean, forceCrit?: boolean } | void;
+  onBeforeAttack?: (ctx: BattleContext, skill: SkillDefinition) => { avoidBlock?: boolean, avoidCrit?: boolean, forceCrit?: boolean } | void;
 }
