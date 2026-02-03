@@ -1,3 +1,4 @@
+
 import { LogType, SkillDefinition, RuntimeCricket } from '../types';
 import { executeDSL } from './dslInterpreter';
 
@@ -65,7 +66,7 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         prob: 100,
         shout: '此音摄魂，可敢聆听？',
         dsl: '攻击时，主动攻击时即使未暴击也能造成相当于气势的斗性损伤',
-        onBeforeAttack: (ctx, skill) => { }
+        onBeforeAttack: (_ctx, _skill) => { }
     },
 
     'run_horse': {
@@ -209,8 +210,8 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         shout: '得心应手，势如破竹！',
         dsl: '造成伤害后，若本次攻击为牙钳，层数增加6；计算属性时，若属性为牙钳，结果=基础值+层数',
         onAfterDealDamage: (ctx, skill) => { executeDSL(skill.dsl, 'onAfterDealDamage', ctx, skill); },
-        onStatCalculate: (ctx, skill) => {
-            const val = executeDSL(skill.dsl, 'onStatCalculate', ctx, skill);
+        onStatCalculate: (ctx, _skill) => {
+            const val = executeDSL(_skill.dsl, 'onStatCalculate', ctx, _skill);
             return typeof val === 'number' ? val : ctx.baseValue;
         }
     },
@@ -303,8 +304,8 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         shout: '与我一战，你岂有胜算……',
         dsl: '造成伤害后，若属性为气势，层数增加6；计算属性时，若属性为气势，结果=基础值+层数',
         onAfterDealDamage: (ctx, skill) => { executeDSL(skill.dsl, 'onAfterDealDamage', ctx, skill); },
-        onStatCalculate: (ctx, skill) => {
-            const val = executeDSL(skill.dsl, 'onStatCalculate', ctx, skill);
+        onStatCalculate: (ctx, _skill) => {
+            const val = executeDSL(_skill.dsl, 'onStatCalculate', ctx, _skill);
             return typeof val === 'number' ? val : ctx.baseValue;
         }
     },
@@ -379,7 +380,7 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
                  if (type) act(ctx, skill, type);
             }
         },
-        onStatCalculate: (ctx, skill) => {
+        onStatCalculate: (ctx, _skill) => {
             const stacks = ctx.owner.skillState.eightFailuresStack || { bite: 0, strength: 0, vigor: 0};
             if (ctx.stat === 'bite') return ctx.baseValue + stacks.bite;
             if (ctx.stat === 'strength') return ctx.baseValue + stacks.strength;

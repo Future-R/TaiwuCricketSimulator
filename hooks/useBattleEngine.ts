@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { CombatState, Phase, LogType, CricketData, SkillDefinition, RuntimeCricket } from '../types';
+import { CombatState, Phase, LogType, CricketData } from '../types';
 import { createRuntimeCricket, processPreFight, processVigorCheck, resolveStrike, checkProb, checkGameOver, runInstantBattle, getStat } from '../services/combatLogic';
 import { CRICKET_TEMPLATES } from '../constants';
 
