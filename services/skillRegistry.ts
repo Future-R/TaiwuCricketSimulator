@@ -66,7 +66,7 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         prob: 100,
         shout: '此音摄魂，可敢聆听？',
         dsl: '攻击时，主动攻击时即使未暴击也能造成相当于气势的斗性损伤',
-        onBeforeAttack: (_ctx, _skill) => { }
+        onBeforeAttack: () => { }
     },
 
     'run_horse': {
@@ -211,7 +211,7 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         dsl: '造成伤害后，若本次攻击为牙钳，层数增加6；计算属性时，若属性为牙钳，结果=基础值+层数',
         onAfterDealDamage: (ctx, skill) => { executeDSL(skill.dsl, 'onAfterDealDamage', ctx, skill); },
         onStatCalculate: (ctx, skill) => {
-            const val = executeDSL(_skill.dsl, 'onStatCalculate', ctx, _skill);
+            const val = executeDSL(skill.dsl, 'onStatCalculate', ctx, skill);
             return typeof val === 'number' ? val : ctx.baseValue;
         }
     },
@@ -248,7 +248,7 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
                 act(ctx, skill, `王者觉醒！全属性大幅提升！`);
             }
         },
-        onStatCalculate: (ctx, skill) => {
+        onStatCalculate: (ctx) => {
             if (ctx.owner.skillState.trueColorTriggered) {
                 return Math.ceil(ctx.baseValue * 1.5);
             }
@@ -270,7 +270,7 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
             const statName = target === 'bite' ? '牙钳' : target === 'strength' ? '角力' : '气势';
             act(ctx, skill, `${statName}翻倍！`);
         },
-        onStatCalculate: (ctx, skill) => {
+        onStatCalculate: (ctx) => {
             if (ctx.owner.skillState.grassBuff === ctx.stat) {
                 return Math.ceil(ctx.baseValue * 2);
             }
@@ -305,7 +305,7 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         dsl: '造成伤害后，若属性为气势，层数增加6；计算属性时，若属性为气势，结果=基础值+层数',
         onAfterDealDamage: (ctx, skill) => { executeDSL(skill.dsl, 'onAfterDealDamage', ctx, skill); },
         onStatCalculate: (ctx, skill) => {
-            const val = executeDSL(_skill.dsl, 'onStatCalculate', ctx, _skill);
+            const val = executeDSL(skill.dsl, 'onStatCalculate', ctx, skill);
             return typeof val === 'number' ? val : ctx.baseValue;
         }
     },
@@ -380,7 +380,7 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
                  if (type) act(ctx, skill, type);
             }
         },
-        onStatCalculate: (ctx, skill) => {
+        onStatCalculate: (ctx) => {
             const stacks = ctx.owner.skillState.eightFailuresStack || { bite: 0, strength: 0, vigor: 0};
             if (ctx.stat === 'bite') return ctx.baseValue + stacks.bite;
             if (ctx.stat === 'strength') return ctx.baseValue + stacks.strength;
