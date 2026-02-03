@@ -338,10 +338,10 @@ const App: React.FC = () => {
                 <div className="flex-1 flex flex-col lg:flex-row overflow-hidden h-full">
                     <div className="flex-1 flex flex-row lg:contents min-h-0 order-1 overflow-y-auto lg:overflow-visible">
                         <div className="flex-1 p-2 lg:p-4 lg:overflow-y-auto lg:border-r border-zinc-800 lg:order-1 border-r lg:border-r-0 border-zinc-800 min-w-0">
-                            <CricketDetail cricket={displayP1} isRed={true} />
+                            <CricketDetail cricket={displayP1} isRed={true} showSkills={skillsEnabled} />
                         </div>
                         <div className="flex-1 p-2 lg:p-4 lg:overflow-y-auto lg:order-3 min-w-0">
-                            <CricketDetail cricket={displayP2} isRed={false} />
+                            <CricketDetail cricket={displayP2} isRed={false} showSkills={skillsEnabled} />
                         </div>
                     </div>
                     <div className="w-full lg:w-48 flex flex-col items-center p-4 border-t lg:border-t-0 lg:border-r border-zinc-800 bg-zinc-900 z-10 shadow-lg order-2 lg:order-2 shrink-0">

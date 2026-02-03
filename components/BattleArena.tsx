@@ -1,9 +1,11 @@
+
 import React from 'react';
 import { RuntimeCricket } from '../types';
 
 interface Props {
   cricket: RuntimeCricket;
   isRed: boolean;
+  showSkills?: boolean;
 }
 
 const StatLine = ({ label, value, max, color = "text-zinc-500" }: any) => (
@@ -20,7 +22,7 @@ const PercentLine = ({ label, value, color = "text-amber-500" }: any) => (
   </div>
 );
 
-export const CricketDetail: React.FC<Props> = ({ cricket, isRed }) => {
+export const CricketDetail: React.FC<Props> = ({ cricket, isRed, showSkills }) => {
   const nameColor = isRed ? 'text-red-400' : 'text-blue-400';
   const borderColor = isRed ? 'border-red-900/30' : 'border-blue-900/30';
 
@@ -59,6 +61,20 @@ export const CricketDetail: React.FC<Props> = ({ cricket, isRed }) => {
              <PercentLine label="反击概率" value={cricket.counter} color="text-zinc-400" />
              <PercentLine label="击伤概率" value={cricket.injuryOdds} color="text-zinc-400" />
           </div>
+
+          {/* Active Skills */}
+          {showSkills && cricket.activeSkills && cricket.activeSkills.length > 0 && (
+             <div className="w-full pt-4 border-t border-zinc-800 mt-2">
+                <h4 className="text-zinc-500 text-xs font-bold mb-2 uppercase tracking-wider">技能</h4>
+                <div className="flex flex-wrap gap-2">
+                    {cricket.activeSkills.map(skill => (
+                        <div key={skill.id} className="px-3 py-1.5 bg-purple-900/30 border border-purple-700/50 rounded shadow-sm">
+                            <span className="text-purple-300 text-sm font-bold">{skill.name}</span>
+                        </div>
+                    ))}
+                </div>
+             </div>
+          )}
        </div>
     </div>
   );

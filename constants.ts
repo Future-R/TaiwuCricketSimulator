@@ -51,7 +51,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 0,
     damageReduce: 0,
     counter: 100,
-    skillIds: ['spear_death']
+    skillIds: ['iron_shell']
   },
   {
     id: 'bell',
@@ -187,7 +187,7 @@ export const CRICKET_TEMPLATES: CricketData[] = [
     defence: 35,
     damageReduce: 10,
     counter: 65,
-    skillIds: ['iron_shell']
+    skillIds: ['spear_death']
   },
   {
     id: 'red_beard',
