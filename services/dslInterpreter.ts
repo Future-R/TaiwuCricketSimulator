@@ -1,3 +1,4 @@
+
 import { LogType, SkillDefinition } from '../types';
 
 // 正则表达式定义
@@ -54,13 +55,7 @@ const parseExpression = (expr: string, ctx: any, skill: SkillDefinition): number
         .replace(/层数/g, String(ctx.owner.skillState[`${skill.id}_stack`] || 0));
 
     // 处理百分比 (仅支持简单的 50% -> 0.5，通常用于乘法)
-    // 实际上 DSL 中通常是 "恢复50%伤害量" -> 解析为动作参数
-    // 这里主要处理 "结果=" 后面的数学公式
-    
     try {
-        // 安全起见，仅允许数字和运算符
-        // 简单的 parser，不支持复杂嵌套
-        // 结果=基础值+层数 -> 10+5
         const tokens = evalStr.match(/(\d+(\.\d+)?|[\+\-\*\/])/g);
         if (!tokens) return 0;
         
@@ -107,6 +102,52 @@ const parseActionValue = (valStr: string, ctx: any): number => {
     return Math.floor(base * ratio);
 };
 
+// --- CACHING LAYER ---
+
+// Map<SkillID, Map<HookName, String[]>>
+// Maps a skill to a map of hooks, where each hook has a list of relevant DSL sentences to execute.
+const dslCache = new Map<string, Map<string, string[]>>();
+
+const parseAndCacheDSL = (skillId: string, dsl: string) => {
+    const hookMap = new Map<string, string[]>();
+    const sentences = dsl.split(/[;；]/);
+
+    for (const sentence of sentences) {
+        const cleanSentence = sentence.trim();
+        if (!cleanSentence) continue;
+
+        let matchedTrigger = false;
+        
+        // Identify which hooks this sentence applies to
+        for (const [key, regex] of Object.entries(REGEX.Trigger)) {
+            if (regex.test(cleanSentence)) {
+                // Map Trigger Key to Hook Name(s)
+                const hooks: string[] = [];
+                if (key === 'BattleStart') hooks.push('onBattleStart');
+                else if (key === 'RoundStart') hooks.push('onRoundStart');
+                else if (key === 'BeforeAttack') hooks.push('onBeforeAttack');
+                else if (key === 'BeforeDefend') hooks.push('onBeforeReceiveDamage'); // Specifically checked via isBlocked usually, but valid hook
+                else if (key === 'ReceiveDamage') { hooks.push('onAfterReceiveDamage'); hooks.push('onBeforeReceiveDamage'); }
+                else if (key === 'DealDamage') hooks.push('onAfterDealDamage');
+                else if (key === 'StatCalc') hooks.push('onStatCalculate');
+                else if (key === 'Defeat') hooks.push('onDefeat');
+                else if (key === 'BeHit') hooks.push('onAfterReceiveDamage');
+
+                // Add sentence to all relevant hooks
+                hooks.forEach(h => {
+                    if (!hookMap.has(h)) hookMap.set(h, []);
+                    hookMap.get(h)!.push(cleanSentence); // Store full sentence, stripping done at runtime
+                });
+                
+                matchedTrigger = true;
+                break; 
+            }
+        }
+    }
+
+    dslCache.set(skillId, hookMap);
+};
+
 // --- 执行器 ---
 
 export const executeDSL = (
@@ -117,54 +158,28 @@ export const executeDSL = (
 ): any => {
     if (!dsl) return;
 
-    // 分割语句 (;)
-    const sentences = dsl.split(/[;；]/);
+    // 1. Check Cache
+    if (!dslCache.has(skill.id)) {
+        parseAndCacheDSL(skill.id, dsl);
+    }
+    const skillHooks = dslCache.get(skill.id)!;
+    
+    // 2. Get Relevant Sentences
+    const sentences = skillHooks.get(hookName);
+    if (!sentences || sentences.length === 0) return;
 
+    // 3. Execute Sentences
     for (const sentence of sentences) {
-        const cleanSentence = sentence.trim();
-        if (!cleanSentence) continue;
-
-        // 1. 匹配触发器
-        let content = cleanSentence;
-        let matchedTrigger = false;
-
-        for (const [key, regex] of Object.entries(REGEX.Trigger)) {
-            if (regex.test(cleanSentence)) {
-                // 检查触发器是否对应当前 Hook
-                if (
-                    (key === 'BattleStart' && hookName === 'onBattleStart') ||
-                    (key === 'RoundStart' && hookName === 'onRoundStart') ||
-                    (key === 'BeforeAttack' && hookName === 'onBeforeAttack') ||
-                    (key === 'BeforeDefend' && hookName === 'onBeforeReceiveDamage' && ctx.isBlocked) ||
-                    (key === 'ReceiveDamage' && (hookName === 'onAfterReceiveDamage' || hookName === 'onBeforeReceiveDamage')) ||
-                    (key === 'DealDamage' && hookName === 'onAfterDealDamage') ||
-                    (key === 'StatCalc' && hookName === 'onStatCalculate') ||
-                    (key === 'Defeat' && hookName === 'onDefeat') ||
-                    (key === 'BeHit' && hookName === 'onAfterReceiveDamage')
-                ) {
-                    content = cleanSentence.replace(regex, '');
-                    matchedTrigger = true;
-                } else {
-                    // 也就是这句 DSL 不属于当前 Hook，跳过
-                    matchedTrigger = false;
-                }
-                break; // 找到一个关键词就停止匹配 Trigger
+        let content = sentence;
+        // Optimization: Use the regex to strip the trigger phrase.
+        for (const regex of Object.values(REGEX.Trigger)) {
+            if (regex.test(sentence)) {
+                content = sentence.replace(regex, '');
+                break;
             }
         }
-        
-        // 如果没有 Trigger 关键词，假设它属于上下文 (例如多条语句中的后续语句)
-        // 但为了严谨，我们尽量要求 Trigger。这里做个简单宽容处理：
-        // 如果 sentence 不包含任何 Trigger 关键词，且之前已经匹配过（复杂，暂不支持），
-        // 或者我们假定它就是 Actions 列表。
-        // 目前策略：必须匹配 Trigger 或者是无 Trigger 的后续 Action (暂简化为必须匹配 Trigger 或者是 StatCalc 的简写)
-        
-        if (!matchedTrigger) {
-             // 特殊处理：如果是计算属性的 "结果=..."，往往紧跟在 Trigger 后，或者是分开写的。
-             // 暂且跳过不匹配的行
-             continue;
-        }
 
-        // 2. 解析条件和动作 (逗号分隔)
+        // Parse conditions and actions
         const parts = content.split(/[,，]/);
         let conditionMet = true;
 
@@ -209,13 +224,13 @@ export const executeDSL = (
                     continue;
                 }
 
-                // 属性比较 (自身体力<50%)
+                // 属性比较
                 const cmpMatch = sub.match(REGEX.Condition.StatCompare);
                 if (cmpMatch) {
-                    const targetName = cmpMatch[1]; // 自身/对手
-                    const statName = cmpMatch[2]; // 体力/斗性...
-                    const op = cmpMatch[3]; // <, >
-                    const valStr = cmpMatch[4]; // 50%, 100
+                    const targetName = cmpMatch[1]; 
+                    const statName = cmpMatch[2]; 
+                    const op = cmpMatch[3];
+                    const valStr = cmpMatch[4]; 
 
                     const target = targetName === '自身' ? ctx.owner : ctx.opponent;
                     let curr = 0, max = 1;
@@ -231,13 +246,19 @@ export const executeDSL = (
                     if (!conditionMet) break;
                     continue;
                 }
+                
+                // Not Blocked
+                if (REGEX.Condition.NotBlocked.test(sub)) {
+                    if (ctx.isBlocked) { conditionMet = false; break; }
+                    continue;
+                }
             }
 
             if (!conditionMet) break;
 
             // --- 动作执行 ---
             
-            // Log Shout (First action triggers shout)
+            // Log Shout (Check logs existence to support simulation mode where logs might be suppressed or ignored)
             if (skill.shout && ctx.logs && !ctx.logs.find((l:any) => l.type === LogType.Shout && l.msg.includes(skill.shout))) {
                  ctx.logs.push({ msg: `「${skill.shout}」`, type: LogType.Shout });
                  ctx.logs.push({ msg: `【${skill.name}】发动！`, type: LogType.Skill });
@@ -258,12 +279,9 @@ export const executeDSL = (
             if (dmgMatch) {
                 const val = parseActionValue(dmgMatch[1], ctx);
                 if (ctx.opponent) {
-                    // 默认造成 HP 伤害，如果有"斗性"字眼则扣 SP
-                    // 简化处理：通常 "造成X损伤" 作用于 HP
                     if (p.includes('体力')) ctx.opponent.currentHp = Math.max(0, ctx.opponent.currentHp - val);
                     if (p.includes('斗性')) ctx.opponent.currentSp = Math.max(0, ctx.opponent.currentSp - val);
                     if (!p.includes('体力') && !p.includes('斗性')) {
-                        // 通用损伤 (HP)
                          ctx.opponent.currentHp = Math.max(0, ctx.opponent.currentHp - val);
                     }
                     if (ctx.logs) ctx.logs.push({ msg: `造成${val}点额外损伤`, type: LogType.Damage });
@@ -271,10 +289,10 @@ export const executeDSL = (
                 continue;
             }
 
-            // 增加层数 (默认)
+            // 增加层数
             const stackMatch = p.match(REGEX.Action.StackAddSelf);
             if (stackMatch) {
-                const op = stackMatch[1]; // 增加/减少
+                const op = stackMatch[1];
                 const val = parseInt(stackMatch[2]);
                 const key = `${skill.id}_stack`;
                 const current = ctx.owner.skillState[key] || 0;
@@ -290,24 +308,23 @@ export const executeDSL = (
                 continue;
             }
 
-            // 计算属性 (结果=)
+            // 计算属性
             const calcMatch = p.match(REGEX.Action.Calc);
             if (calcMatch && hookName === 'onStatCalculate') {
                 const expr = calcMatch[1];
                 return parseExpression(expr, ctx, skill);
             }
 
-            // 避免 (Avoid)
+            // 避免
             const avoidMatch = p.match(REGEX.Action.Avoid);
             if (avoidMatch) {
-                if (hookName === 'onBeforeAttack') return { avoidBlock: true }; // 简化，假设避免格挡
-                if (hookName === 'onBeforeReceiveDamage') return { isCrit: false }; // 简化，假设避免暴击
+                if (hookName === 'onBeforeAttack') return { avoidBlock: true };
+                if (hookName === 'onBeforeReceiveDamage') return { isCrit: false };
             }
 
             // 反弹
             const reflectMatch = p.match(REGEX.Action.Reflect);
             if (reflectMatch && hookName === 'onBeforeReceiveDamage') {
-                // 简化反弹逻辑
                 const amt = Math.min(ctx.hpDmg, ctx.owner.damageReduce);
                 ctx.opponent.currentHp = Math.max(0, ctx.opponent.currentHp - amt);
                 if (ctx.logs) ctx.logs.push({ msg: `反弹${amt}点损伤`, type: LogType.Damage });

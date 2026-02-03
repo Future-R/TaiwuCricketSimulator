@@ -47,6 +47,8 @@ export const createRuntimeCricket = (data: CricketData): RuntimeCricket => {
 };
 
 const addLog = (state: CombatState, message: string, type: LogType = LogType.Info): CombatState => {
+  if (state.suppressLogs) return state; // Performance optimization for simulation
+
   const newLog: BattleLog = {
     id: Math.random().toString(36).substr(2, 9),
     turn: state.round,
@@ -387,7 +389,8 @@ export const runInstantBattle = (
     let state: CombatState = {
       round: 0, phase: Phase.Setup, logs: [],
       p1: createRuntimeCricket(c1), p2: createRuntimeCricket(c2),
-      winnerId: null, autoPlay: true, battleSpeed: 0, skillsEnabled
+      winnerId: null, autoPlay: true, battleSpeed: 0, skillsEnabled,
+      suppressLogs: true // Enable log suppression
     };
     
     // Store original UUIDs to identify winner

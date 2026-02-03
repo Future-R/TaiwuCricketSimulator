@@ -89,6 +89,7 @@ export interface CombatState {
   autoPlay: boolean;
   battleSpeed: number; // ms delay
   skillsEnabled: boolean;
+  suppressLogs?: boolean; // Optimization for simulations
 }
 
 // --- Hook Contexts ---
