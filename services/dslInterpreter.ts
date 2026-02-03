@@ -115,8 +115,6 @@ const parseAndCacheDSL = (skillId: string, dsl: string) => {
     for (const sentence of sentences) {
         const cleanSentence = sentence.trim();
         if (!cleanSentence) continue;
-
-        let matchedTrigger = false;
         
         // Identify which hooks this sentence applies to
         for (const [key, regex] of Object.entries(REGEX.Trigger)) {
@@ -139,7 +137,6 @@ const parseAndCacheDSL = (skillId: string, dsl: string) => {
                     hookMap.get(h)!.push(cleanSentence); // Store full sentence, stripping done at runtime
                 });
                 
-                matchedTrigger = true;
                 break; 
             }
         }
