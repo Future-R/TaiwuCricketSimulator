@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { CombatState, Phase, LogType, CricketData } from '../types';
+import { CombatState, Phase, LogType, CricketData, SkillDefinition, RuntimeCricket } from '../types';
 import { createRuntimeCricket, processPreFight, processVigorCheck, resolveStrike, checkProb, checkGameOver, runInstantBattle, getStat } from '../services/combatLogic';
 import { CRICKET_TEMPLATES } from '../constants';
 
@@ -275,16 +275,31 @@ export const useBattleEngine = () => {
           newState.logs = [...newState.logs, ...newLogObjs];
 
           if (checkGameOver(newState.p1, newState.p2)) {
-              // Note: checkGameOver now returns uniqueId, not template Id.
-              // CombatState uses winnerId to stop loop.
-              // We just need a non-null string.
               const winnerId = checkGameOver(newState.p1, newState.p2)!;
               setIsPlaying(false);
               
-              // Find who matches uniqueId for correct Name logging
               const winner = winnerId === newState.p1.uniqueId ? newState.p1 : newState.p2;
-              const msg = `战斗结束！胜者：${winner.name} (耐久: ${winner.currentDurability}/${winner.maxDurability}, 耐力: ${winner.currentHp}/${winner.hp}, 斗性: ${winner.currentSp}/${winner.sp})`;
+              const loser = winnerId === newState.p1.uniqueId ? newState.p2 : newState.p1;
+              const msg = `战斗结束！胜者：${winner.name} (耐久: ${winner.currentDurability}/${winner.maxDurability}, 体力: ${winner.currentHp}/${winner.hp}, 斗性: ${winner.currentSp}/${winner.sp})`;
               
+              // Trigger onDefeat hooks for the loser
+              if (skillsEnabled && loser.activeSkills) {
+                  const defeatCtx = { state: newState, owner: loser, opponent: winner, logs: [] as any[] };
+                  loser.activeSkills.forEach(skill => {
+                      if (skill.onDefeat) {
+                          if (skill.shout) {
+                              defeatCtx.logs.push({ msg: `「${skill.shout}」`, type: LogType.Shout });
+                          }
+                          skill.onDefeat(defeatCtx, skill);
+                      }
+                  });
+                   // Append hook logs
+                  const hookLogs = defeatCtx.logs.map(l => ({
+                      id: Math.random().toString(), turn: newState.round, message: l.msg, type: l.type
+                  }));
+                  newState.logs = [...newState.logs, ...hookLogs];
+              }
+
               const finalLog = {
                 id: Math.random().toString(), turn: newState.round, message: msg, type: LogType.Win
               };

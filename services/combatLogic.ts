@@ -25,6 +25,11 @@ export const createRuntimeCricket = (data: CricketData): RuntimeCricket => {
           }
       });
   }
+  
+  // Implicit "Dumb" skill if grade is 0 (or Dumb const)
+  if (data.grade === 0) {
+      if (SKILL_REGISTRY['dumb_defeat']) activeSkills.push(SKILL_REGISTRY['dumb_defeat']);
+  }
 
   return {
     ...data,
@@ -70,7 +75,6 @@ const applyDamage = (victim: RuntimeCricket, hpDmg: number, spDmg: number, durDm
 
 // --- GENERIC HOOK TRIGGER ---
 // Triggers hooks on a cricket's active skills.
-// "Tian Guang" (Sky Blue) logic: If Opponent has 'tian_guang', 66% chance to suppress skill.
 const triggerHooks = (
     owner: RuntimeCricket, 
     opponent: RuntimeCricket, 
@@ -78,23 +82,24 @@ const triggerHooks = (
     ctx: any,
     canBeNegated: boolean = true
 ) => {
-    // Check suppression
-    const oppHasTianGuang = opponent.activeSkills.some(s => s.id === 'tian_guang');
+    const tianGuangSkill = opponent.activeSkills.find(s => s.id === 'tian_guang');
     
     owner.activeSkills.forEach(skill => {
         if (skill[hookName]) {
             // Meta-Check: Suppression
-            if (canBeNegated && oppHasTianGuang && skill.id !== 'tian_guang') { // Cannot suppress itself (implied)
-                if (Math.random() * 100 < 66) {
-                    if (ctx.logs) ctx.logs.push({ msg: `【天光】天蓝青发动技能，阻止了${owner.name}的【${skill.name}】！`, type: LogType.Skill });
+            if (canBeNegated && tianGuangSkill && skill.id !== 'tian_guang') { 
+                if (checkProb(tianGuangSkill.prob)) {
+                    if (ctx.logs) {
+                        ctx.logs.push({ msg: `「${tianGuangSkill.shout}」`, type: LogType.Shout });
+                        ctx.logs.push({ msg: `【天光】阻止了${owner.name}的【${skill.name}】！`, type: LogType.Skill });
+                    }
                     return; // Skip this skill
                 }
             }
             
-            // Execute
-            if (ctx.logs) ctx.logs.push({ msg: `【${skill.name}】${owner.name}发动技能！`, type: LogType.Skill });
+            // Execute - Logic inside hook handles shouting now via `act` helper in registry
             const fn = skill[hookName] as Function;
-            fn(ctx);
+            fn(ctx, skill);
         }
     });
 };
@@ -110,10 +115,8 @@ export const getStat = (c: RuntimeCricket, opp: RuntimeCricket, stat: 'vigor'|'s
   // Apply Hooks (onStatCalculate)
   c.activeSkills.forEach(skill => {
       if (skill.onStatCalculate) {
-          // Stat calc skills typically internal buffers, not usually negated by Tian Guang in real time, 
-          // or we assume they are already active state. 
-          // For simplicity, we DO NOT apply Tian Guang check on simple stat lookups to avoid log spam and recursion.
-          val = skill.onStatCalculate({ owner: c, opponent: opp, stat, baseValue: val });
+          // Pass skill to hook
+          val = skill.onStatCalculate({ owner: c, opponent: opp, stat, baseValue: val }, skill);
       }
   });
 
@@ -226,22 +229,25 @@ const handleDamage = (
     };
 
     if (skillsEnabled) {
-        const oppHasTianGuang = attacker.activeSkills.some(s => s.id === 'tian_guang');
+        // Fix Tian Guang check here as well
+        const tianGuangSkill = attacker.activeSkills.find(s => s.id === 'tian_guang');
         
         defender.activeSkills.forEach(skill => {
             if (skill.onBeforeReceiveDamage) {
-                if (oppHasTianGuang && skill.id !== 'tian_guang' && checkProb(66)) {
-                    logs.push({ msg: `【天光】天蓝青阻止了${defender.name}的【${skill.name}】！`, type: LogType.Skill });
-                    return;
+                if (tianGuangSkill && skill.id !== 'tian_guang') {
+                    if (checkProb(tianGuangSkill.prob)) {
+                        logs.push({ msg: `「${tianGuangSkill.shout}」`, type: LogType.Shout });
+                        logs.push({ msg: `【天光】阻止了${defender.name}的【${skill.name}】！`, type: LogType.Skill });
+                        return;
+                    }
                 }
-                const res = skill.onBeforeReceiveDamage(ctx);
+                // Pass skill
+                const res = skill.onBeforeReceiveDamage(ctx, skill);
                 if (res) {
                     if (res.hpDmg !== undefined) ctx.hpDmg = res.hpDmg;
                     if (res.spDmg !== undefined) ctx.spDmg = res.spDmg;
                     if (res.durDmg !== undefined) ctx.durDmg = res.durDmg;
                     if (res.isCrit !== undefined) ctx.isCrit = res.isCrit;
-                    // Handle extras (Counter/Reflect)
-                    if ((res as any).counterAttack) { /* Logic complex, skipped for now */ }
                 }
             }
         });
@@ -284,7 +290,7 @@ export const resolveStrike = (
       // Attacker flags
       attacker.activeSkills.forEach(s => {
           if (s.onBeforeAttack) {
-             const res = s.onBeforeAttack({ state: null as any, owner: attacker, opponent: defender, logs });
+             const res = s.onBeforeAttack({ state: null as any, owner: attacker, opponent: defender, logs }, s);
              if (res) {
                  if (res.avoidBlock) avoidBlock = true;
                  if (res.forceCrit) forcedCrit = true;
@@ -306,7 +312,6 @@ export const resolveStrike = (
   const defBlockRed = defender.damageReduce;
   let attCritDmg = (attacker as any).critDamage || 0;
   
-  // Apply Stat Skill (Jade Hoe) - Manual check because getStat is pure
   if (skillsEnabled) attCritDmg = getStat(attacker, defender, 'critDamage');
 
   let hpDamage = 0;
@@ -317,8 +322,14 @@ export const resolveStrike = (
   // Apply "Blowing Bell" (Soul Taking) logic
   let extraSpDmg = 0;
   if (skillsEnabled && attacker.skillIds?.includes('soul_taking') && sourceType === 'bite') {
+      // Trigger Shout if exists
+      const bell = attacker.activeSkills.find(s => s.id === 'soul_taking');
+      if (bell && bell.shout && logs.filter(l => l.type === LogType.Shout).length === 0) {
+          logs.push({ msg: `「${bell.shout}」`, type: LogType.Shout });
+      }
+      
       extraSpDmg += attVigor;
-      logs.push({ msg: `摄魂：附加${attVigor}斗性伤害。`, type: LogType.Effect });
+      logs.push({ msg: `【摄魂】附加${attVigor}斗性伤害。`, type: LogType.Effect });
   }
 
   if (!isCrit) {
@@ -345,15 +356,6 @@ export const resolveStrike = (
       durDamage = 1; 
       logs.push({ msg: `${defender.name} 受到重创！(耐久 -1)`, type: LogType.Damage });
     }
-  }
-
-  // Spear Death Logic
-  if (skillsEnabled && attacker.skillIds?.includes('spear_death') && sourceType === 'strength') {
-      if (checkProb(50)) {
-           hpDamage *= 2;
-           spDamage *= 2;
-           logs.push({ msg: `夺命：伤害翻倍！`, type: LogType.Effect });
-      }
   }
 
   // Injury

@@ -2,16 +2,19 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { CRICKET_TEMPLATES } from './constants';
 import { createRuntimeCricket } from './services/combatLogic';
+import { SKILL_REGISTRY } from './services/skillRegistry';
 import { CricketCard } from './components/CricketCard';
 import { CricketDetail } from './components/BattleArena';
 import { BattleLogViewer } from './components/BattleLog';
 import { useBattleEngine } from './hooks/useBattleEngine';
-import { Search, Zap, ZapOff, Loader2, List, Swords, ScrollText, Upload, Download } from 'lucide-react';
-import { CricketData } from './types';
+import { Search, Zap, ZapOff, Loader2, List, Swords, ScrollText, Upload, Download, FileJson } from 'lucide-react';
+import { CricketData, SkillDefinition } from './types';
 
 const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [customCrickets, setCustomCrickets] = useState<CricketData[]>([]);
+  // We use a dummy state to force re-renders when skills are updated, as SKILL_REGISTRY is mutable
+  const [skillRegistryVersion, setSkillRegistryVersion] = useState(0); 
   
   // Combine defaults with imported
   const allCrickets = useMemo(() => [...CRICKET_TEMPLATES, ...customCrickets], [customCrickets]);
@@ -23,6 +26,7 @@ const App: React.FC = () => {
   const [selectionTarget, setSelectionTarget] = useState<'p1' | 'p2'>('p1'); 
   const [mobileTab, setMobileTab] = useState<'list' | 'arena' | 'logs'>('arena');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const skillFileInputRef = useRef<HTMLInputElement>(null);
 
   const { 
       combatState, startBattle, simulateBattles, calculateWinRates, calculateMatrixWinRates,
@@ -43,8 +47,8 @@ const App: React.FC = () => {
   const handleSimulate10000 = () => { simulateBattles(p1Data, p2Data, 10000); setMobileTab('logs'); };
   const handleCalculateWinRates = async () => { await calculateWinRates(p1Data); setMobileTab('logs'); };
 
-  const previewP1 = useMemo(() => createRuntimeCricket(p1Data), [p1Data]);
-  const previewP2 = useMemo(() => createRuntimeCricket(p2Data), [p2Data]);
+  const previewP1 = useMemo(() => createRuntimeCricket(p1Data), [p1Data, skillRegistryVersion]);
+  const previewP2 = useMemo(() => createRuntimeCricket(p2Data), [p2Data, skillRegistryVersion]);
   const displayP1 = combatState ? combatState.p1 : previewP1;
   const displayP2 = combatState ? combatState.p2 : previewP2;
   const showMatrix = simulationResults?.type === 'matrix' && matrixData;
@@ -58,9 +62,8 @@ const App: React.FC = () => {
           try {
               const json = JSON.parse(event.target?.result as string);
               if (Array.isArray(json)) {
-                  // Basic validation could go here
                   setCustomCrickets(prev => [...prev, ...json]);
-                  alert(`成功导入 ${json.length} 只促织！`);
+                  alert(`成功导入 ${json.length} 只促织配置！`);
               }
           } catch (err) {
               alert('导入失败，JSON格式错误');
@@ -76,11 +79,63 @@ const App: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = "crickets_config.json";
+    link.download = "促织属性配置.json";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  // Skill Import/Export Logic
+  const handleImportSkills = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+          try {
+              const json = JSON.parse(event.target?.result as string);
+              if (Array.isArray(json)) {
+                  let updatedCount = 0;
+                  // Update existing registry values. 
+                  json.forEach((s: Partial<SkillDefinition>) => {
+                      if (s.id && SKILL_REGISTRY[s.id]) {
+                          if (s.name) SKILL_REGISTRY[s.id].name = s.name;
+                          if (s.prob !== undefined) SKILL_REGISTRY[s.id].prob = s.prob;
+                          if (s.dsl) SKILL_REGISTRY[s.id].dsl = s.dsl; // Allow DSL import
+                          if (s.shout) SKILL_REGISTRY[s.id].shout = s.shout;
+                          updatedCount++;
+                      }
+                  });
+                  setSkillRegistryVersion(v => v + 1); // Trigger re-render of previews
+                  alert(`成功更新 ${updatedCount} 个技能配置！`);
+              }
+          } catch (err) {
+              alert('技能导入失败，JSON格式错误');
+          }
+      };
+      reader.readAsText(file);
+      e.target.value = '';
+  };
+
+  const handleExportSkills = () => {
+      // Export serializable parts (ID, Name, Prob, Shout, DSL)
+      const exportableSkills = Object.values(SKILL_REGISTRY).map(s => ({
+          id: s.id,
+          name: s.name,
+          prob: s.prob,
+          shout: s.shout,
+          dsl: s.dsl
+      }));
+      const dataStr = JSON.stringify(exportableSkills, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = "技能概率配置.json";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
   };
 
   return (
@@ -96,6 +151,50 @@ const App: React.FC = () => {
               ${mobileTab === 'list' ? 'flex absolute inset-0 z-20 w-full' : 'hidden'}
           `}>
             <div className="p-4 border-b border-zinc-800 bg-zinc-900 space-y-2">
+               
+               {/* Config Buttons: Cricket Data */}
+               <div className="flex gap-2">
+                   <button 
+                       onClick={() => fileInputRef.current?.click()}
+                       className="flex-1 py-1.5 flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-xs text-zinc-400"
+                       title="导入促织数据"
+                   >
+                       <Download size={14} /> 导入配置
+                   </button>
+                   <input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleImport} />
+                   
+                   <button 
+                       onClick={handleExport}
+                       className="flex-1 py-1.5 flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-xs text-zinc-400"
+                       title="导出促织数据"
+                   >
+                       <Upload size={14} /> 导出配置
+                   </button>
+               </div>
+
+               {/* Config Buttons: Skill Data */}
+               <div className="flex gap-2">
+                   <button 
+                       onClick={() => skillFileInputRef.current?.click()}
+                       className="flex-1 py-1.5 flex items-center justify-center gap-2 bg-zinc-800/50 hover:bg-zinc-700 border border-zinc-700/50 rounded text-xs text-purple-400/70"
+                       title="导入技能配置(概率/名称)"
+                   >
+                       <FileJson size={14} /> 导入技能
+                   </button>
+                   <input type="file" accept=".json" className="hidden" ref={skillFileInputRef} onChange={handleImportSkills} />
+                   
+                   <button 
+                       onClick={handleExportSkills}
+                       className="flex-1 py-1.5 flex items-center justify-center gap-2 bg-zinc-800/50 hover:bg-zinc-700 border border-zinc-700/50 rounded text-xs text-purple-400/70"
+                       title="导出技能配置(概率/名称)"
+                   >
+                       <FileJson size={14} /> 导出技能
+                   </button>
+               </div>
+
+               <div className="h-2"></div>
+
+               {/* Search Bar - Moved to Bottom */}
                <div className="relative">
                  <Search className="absolute left-3 top-2.5 text-zinc-500" size={16} />
                  <input 
@@ -103,22 +202,6 @@ const App: React.FC = () => {
                    className="w-full pl-9 pr-3 py-2 border border-zinc-700 bg-zinc-800 text-zinc-200 rounded text-sm focus:outline-none focus:border-amber-600 placeholder-zinc-500"
                    value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
                  />
-               </div>
-               <div className="flex gap-2">
-                   <button 
-                       onClick={() => fileInputRef.current?.click()}
-                       className="flex-1 py-1.5 flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-xs text-zinc-400"
-                   >
-                       <Upload size={14} /> 导入配置
-                   </button>
-                   <input type="file" accept=".json" className="hidden" ref={fileInputRef} onChange={handleImport} />
-                   
-                   <button 
-                       onClick={handleExport}
-                       className="flex-1 py-1.5 flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded text-xs text-zinc-400"
-                   >
-                       <Download size={14} /> 导出配置
-                   </button>
                </div>
             </div>
             

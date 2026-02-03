@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef } from 'react';
 import { BattleLog, LogType } from '../types';
 
@@ -22,6 +23,7 @@ export const BattleLogViewer: React.FC<Props> = ({ logs }) => {
       case LogType.Win: return 'text-amber-400 font-black text-lg py-3 border-t border-zinc-700 mt-2 text-center';
       case LogType.Effect: return 'text-rose-400';
       case LogType.Info: return 'text-blue-400 font-bold mt-3 mb-1';
+      case LogType.Shout: return 'text-white font-serif text-base py-1 px-4 my-1 border-l-2 border-amber-500 bg-amber-900/20';
       default: return 'text-zinc-400';
     }
   };
