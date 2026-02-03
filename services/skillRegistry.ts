@@ -90,7 +90,7 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         id: 'black_armor',
         name: '玄甲',
         shout: '碾压……过去……',
-        dsl: '回合开始时，造成200%回合数的体力损伤，造成200%回合数的斗性损伤',
+        dsl: '回合开始时，造成150%回合数的体力损伤，造成150%回合数的斗性损伤',
         onRoundStart: (ctx, skill) => { executeDSL(skill.dsl, 'onRoundStart', ctx, skill); }
     },
     

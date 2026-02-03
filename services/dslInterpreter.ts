@@ -106,7 +106,8 @@ const parseActionValue = (valStr: string, ctx: any): number => {
         ratio = 0.5;
     }
 
-    return Math.floor(base * ratio);
+    // 向上取整
+    return Math.ceil(base * ratio);
 };
 
 // --- CACHING LAYER ---
