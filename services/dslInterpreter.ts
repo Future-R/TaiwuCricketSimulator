@@ -335,7 +335,9 @@ export const executeDSL = (
                  // Manual loop for perf instead of find/includes
                  let shouted = false;
                  for(let i=ctx.logs.length-1; i>=0; i--) {
-                     if(ctx.logs[i].type === LogType.Shout && ctx.logs[i].message.includes(skill.shout)) {
+                     // FIX: Use .msg or .message defensively, as ctx.logs contains objects with 'msg' property in current implementation
+                     const logMsg = (ctx.logs[i] as any).msg || (ctx.logs[i] as any).message;
+                     if(ctx.logs[i].type === LogType.Shout && logMsg && logMsg.includes(skill.shout)) {
                          shouted = true; break;
                      }
                  }
