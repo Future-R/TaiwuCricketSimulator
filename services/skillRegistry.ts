@@ -61,9 +61,27 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         shout: '运阴阳之力，抵乾坤之变！',
         dsl: '受到体力损伤时，若概率触发(33%)，抵消全部伤害；受到斗性损伤时，若概率触发(33%)，抵消全部伤害',
         onBeforeReceiveDamage: (ctx, skill) => {
-            // Logic handled by DSL, just verify probability in DSL string above
-            const res = executeDSL(skill.dsl, 'onBeforeReceiveDamage', ctx, skill);
-            if (res) return res;
+            let modified = false;
+            let msg = "";
+            
+            // Check HP Damage
+            if (ctx.hpDmg > 0 && check(33)) {
+                ctx.hpDmg = 0;
+                msg += "抵消体力损伤 ";
+                modified = true;
+            }
+
+            // Check SP Damage independently
+            if (ctx.spDmg > 0 && check(33)) {
+                ctx.spDmg = 0;
+                msg += "抵消斗性损伤";
+                modified = true;
+            }
+
+            if (modified) {
+                act(ctx, skill, msg.trim());
+                return { hpDmg: ctx.hpDmg, spDmg: ctx.spDmg };
+            }
         }
     },
 
@@ -131,9 +149,7 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         shout: '性烈如火，睚眦必报！',
         dsl: '造成伤害后，若本次攻击为反击，若概率触发(50%)，反击时的损伤加倍',
         onAfterDealDamage: (ctx, skill) => { 
-            // DSL Action "100% extra damage" is same as double
-            // But let's use code to ensure "Double" logic exactly matches prompt
-            if (ctx.sourceType === 'strength' && check(50)) { // Assuming counter is strength based usually
+            if (ctx.isCounter && check(50)) { 
                  // Extra damage equal to original damage = Double
                  const hp = ctx.actualHpDmg || 0;
                  const sp = ctx.actualSpDmg || 0;
@@ -397,10 +413,12 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         onRoundStart: (ctx, skill) => {
             const stats = ['bite', 'strength', 'vigor'] as const;
             let count = 0;
-            const getRaw = (c: RuntimeCricket, s: string) => (c as any)[s] || 0;
             
+            const getVal = (c: RuntimeCricket, s: any) => 
+                ctx.getStat ? ctx.getStat(c, s) : ((c as any)[s] || 0);
+
             stats.forEach(st => {
-                if (getRaw(ctx.owner, st) > getRaw(ctx.opponent, st)) count++;
+                if (getVal(ctx.owner, st) > getVal(ctx.opponent, st)) count++;
             });
             
             if (count > 0 && check(count * 20)) {
@@ -421,7 +439,6 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         shout: '红莲业火，焚妖荡魔！',
         dsl: '防御时66%发动，将减免的体力损伤反弹给对手',
         onBeforeReceiveDamage: (ctx, skill) => {
-            // FIXED logic: Reflect actual prevented damage, capped by incoming raw damage
             if (ctx.isBlocked && check(66)) {
                  const raw = ctx.rawHpDmg || 0;
                  const reflected = Math.min(raw, ctx.owner.damageReduce); 
@@ -444,16 +461,18 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
                  if (!ctx.owner.skillState.eightFailuresStack) ctx.owner.skillState.eightFailuresStack = { bite: 0, strength: 0, vigor: 0};
                  let type = "";
                  
-                 if (ctx.sourceType === 'bite') {
-                     ctx.owner.skillState.eightFailuresStack.bite++;
-                     type = "牙钳+1";
-                 } else if (ctx.sourceType === 'strength') {
+                 
+                 if (ctx.isCounter) {
                      ctx.owner.skillState.eightFailuresStack.strength++;
                      type = "角力+1";
                  } else if (ctx.sourceType === 'vigor') {
                      ctx.owner.skillState.eightFailuresStack.vigor++;
                      type = "气势+1";
+                 } else {
+                     ctx.owner.skillState.eightFailuresStack.bite++;
+                     type = "牙钳+1";
                  }
+                 
                  if (type) act(ctx, skill, type);
             }
         },

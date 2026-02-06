@@ -1,5 +1,5 @@
 
-import { BattleLog, CombatState, CricketData, DamageContext, LogType, Phase, RuntimeCricket, SkillDefinition } from '../types';
+import { BattleLog, CombatState, CricketData, DamageContext, LogType, Phase, RuntimeCricket, SkillDefinition, BattleContext } from '../types';
 import { SKILL_REGISTRY } from './skillRegistry';
 
 // Helper to check probability
@@ -75,6 +75,39 @@ const applyDamage = (victim: RuntimeCricket, hpDmg: number, spDmg: number, durDm
   if (victim.currentSp === 0) victim.isLost = true;
 };
 
+export const getStat = (c: RuntimeCricket, opp: RuntimeCricket, stat: 'vigor'|'strength'|'bite'|'deadliness'|'defence'|'counter'|'critDamage'): number => {
+  let val = (c as any)[stat] || 0;
+  
+  // Apply injuries
+  if (stat === 'vigor') val -= c.injuries.vigor;
+  if (stat === 'strength') val -= c.injuries.strength;
+  if (stat === 'bite') val -= c.injuries.bite;
+  
+  // Apply Hooks (onStatCalculate)
+  c.activeSkills.forEach(skill => {
+      if (skill.onStatCalculate) {
+          // Pass skill to hook
+          val = skill.onStatCalculate({ owner: c, opponent: opp, stat, baseValue: val }, skill);
+      }
+  });
+
+  return Math.max(0, val);
+};
+
+// Wrapper for hooks to provide context helpers
+const createHookContext = (
+    state: CombatState, 
+    owner: RuntimeCricket, 
+    opponent: RuntimeCricket, 
+    logs: { msg: string; type: LogType }[] | null
+): BattleContext => ({
+    state,
+    owner,
+    opponent,
+    logs,
+    getStat: (t, s) => getStat(t, t === owner ? opponent : owner, s)
+});
+
 // --- GENERIC HOOK TRIGGER ---
 // Triggers hooks on a cricket's active skills.
 const triggerHooks = (
@@ -109,25 +142,6 @@ const triggerHooks = (
     });
 };
 
-export const getStat = (c: RuntimeCricket, opp: RuntimeCricket, stat: 'vigor'|'strength'|'bite'|'deadliness'|'defence'|'counter'|'critDamage'): number => {
-  let val = (c as any)[stat] || 0;
-  
-  // Apply injuries
-  if (stat === 'vigor') val -= c.injuries.vigor;
-  if (stat === 'strength') val -= c.injuries.strength;
-  if (stat === 'bite') val -= c.injuries.bite;
-  
-  // Apply Hooks (onStatCalculate)
-  c.activeSkills.forEach(skill => {
-      if (skill.onStatCalculate) {
-          // Pass skill to hook
-          val = skill.onStatCalculate({ owner: c, opponent: opp, stat, baseValue: val }, skill);
-      }
-  });
-
-  return Math.max(0, val);
-};
-
 // --------------------------------------------------------------------------------
 // LOGIC STEPS
 // --------------------------------------------------------------------------------
@@ -148,10 +162,10 @@ export const processPreFight = (state: CombatState): CombatState => {
   if (state.skillsEnabled) {
       // Optimization: No logs if suppressed
       const logs: { msg: string; type: LogType }[] | null = state.suppressLogs ? null : [];
-      const ctx1 = { state: nextState, owner: p1, opponent: p2, logs };
+      const ctx1 = createHookContext(nextState, p1, p2, logs);
       triggerHooks(p1, p2, 'onBattleStart', ctx1);
       
-      const ctx2 = { state: nextState, owner: p2, opponent: p1, logs };
+      const ctx2 = createHookContext(nextState, p2, p1, logs);
       triggerHooks(p2, p1, 'onBattleStart', ctx2);
 
       if (logs) {
@@ -175,8 +189,8 @@ export const processRoundStart = (state: CombatState): CombatState => {
     if (!s.skillsEnabled) return s;
     const logs: { msg: string; type: LogType }[] | null = state.suppressLogs ? null : [];
 
-    triggerHooks(s.p1, s.p2, 'onRoundStart', { state: s, owner: s.p1, opponent: s.p2, logs });
-    triggerHooks(s.p2, s.p1, 'onRoundStart', { state: s, owner: s.p2, opponent: s.p1, logs });
+    triggerHooks(s.p1, s.p2, 'onRoundStart', createHookContext(s, s.p1, s.p2, logs));
+    triggerHooks(s.p2, s.p1, 'onRoundStart', createHookContext(s, s.p2, s.p1, logs));
 
     if (logs) {
         for(const l of logs) s = addLog(s, l.msg, l.type);
@@ -229,7 +243,8 @@ const handleDamage = (
     logs: { msg: string; type: LogType }[] | null,
     skillsEnabled: boolean,
     sourceType: 'vigor' | 'bite' | 'strength' | 'other',
-    rawHpDmg: number = 0
+    rawHpDmg: number = 0,
+    isCounter: boolean = false
 ) => {
     // Context Construction
     const ctx: DamageContext = {
@@ -240,7 +255,9 @@ const handleDamage = (
         hpDmg, spDmg, durDmg, isCrit, 
         isBlocked, 
         sourceType,
-        rawHpDmg
+        rawHpDmg,
+        isCounter,
+        getStat: (t, s) => getStat(t, t === defender ? attacker : defender, s)
     };
 
     if (skillsEnabled) {
@@ -277,7 +294,7 @@ const handleDamage = (
     applyDamage(defender, ctx.hpDmg, ctx.spDmg, ctx.durDmg);
 
     // Attacker Hooks (After Deal)
-    const attackCtx: DamageContext = { ...ctx, owner: attacker, opponent: defender, actualHpDmg: ctx.hpDmg, actualSpDmg: ctx.spDmg } as any;
+    const attackCtx: DamageContext = { ...ctx, owner: attacker, opponent: defender, actualHpDmg: ctx.hpDmg, actualSpDmg: ctx.spDmg, getStat: (t, s) => getStat(t, t === attacker ? defender : attacker, s) } as any;
     
     if (skillsEnabled) {
          triggerHooks(attacker, defender, 'onAfterDealDamage', attackCtx);
@@ -297,7 +314,8 @@ export const resolveStrike = (
   _isCritCycle: boolean, 
   forceCrit: boolean, 
   skillsEnabled: boolean,
-  suppressLogs: boolean = false
+  suppressLogs: boolean = false,
+  isCounter: boolean = false
 ): { att: RuntimeCricket; def: RuntimeCricket; logs: { msg: string; type: LogType }[]; isCrit: boolean } => {
   
   // Optimization: Don't create array if suppressed, but return type requires it, so we return empty at end
@@ -312,7 +330,7 @@ export const resolveStrike = (
       // Attacker flags
       attacker.activeSkills.forEach(s => {
           if (s.onBeforeAttack) {
-             const res = s.onBeforeAttack({ state: null as any, owner: attacker, opponent: defender, logs }, s);
+             const res = s.onBeforeAttack(createHookContext(null as any, attacker, defender, logs), s);
              if (res) {
                  if (res.avoidBlock) avoidBlock = true;
                  if (res.forceCrit) forcedCrit = true;
@@ -322,9 +340,14 @@ export const resolveStrike = (
   }
 
   // Stats
-  const attDeadliness = getStat(attacker, defender, 'deadliness');
-  const defDefence = getStat(defender, attacker, 'defence');
+  let attDeadliness = getStat(attacker, defender, 'deadliness');
+  let defDefence = getStat(defender, attacker, 'defence');
   const attVigor = getStat(attacker, defender, 'vigor');
+
+  // --- Apply Brocade Intimidate Debuffs ---
+  if (attacker.skillState.brocadeDebuff === 'deadliness') attDeadliness = 0;
+  if (defender.skillState.brocadeDebuff === 'defence') defDefence = 0;
+  // ----------------------------------------
 
   // 1. Roll Crit
   let isCrit = forcedCrit || (!avoidCrit && checkProb(attDeadliness));
@@ -396,7 +419,7 @@ export const resolveStrike = (
   }
 
   // Construct Context and Delegate to `handleDamage` which runs Hooks
-  handleDamage(attacker, defender, hpDamage, spDamage, durDamage, isCrit, isBlocked, logs, skillsEnabled, sourceType, rawHpDmg);
+  handleDamage(attacker, defender, hpDamage, spDamage, durDamage, isCrit, isBlocked, logs, skillsEnabled, sourceType, rawHpDmg, isCounter);
 
   return { att: attacker, def: defender, logs: logs || [], isCrit };
 };
@@ -485,7 +508,8 @@ const resolveExchange = (state: CombatState, initiatorIsP1: boolean): CombatStat
             ? getStat(attacker, defender, 'bite')
             : getStat(attacker, defender, 'strength');
 
-        const res = resolveStrike(attacker, defender, statVal, lastHitWasCrit, false, state.skillsEnabled, state.suppressLogs);
+        const isCounter = counterCount > 0;
+        const res = resolveStrike(attacker, defender, statVal, lastHitWasCrit, false, state.skillsEnabled, state.suppressLogs, isCounter);
         lastHitWasCrit = res.isCrit;
 
         const w = checkGameOver(state.p1, state.p2);
