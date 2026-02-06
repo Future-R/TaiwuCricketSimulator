@@ -228,7 +228,8 @@ const handleDamage = (
     isBlocked: boolean,
     logs: { msg: string; type: LogType }[] | null,
     skillsEnabled: boolean,
-    sourceType: 'vigor' | 'bite' | 'strength' | 'other'
+    sourceType: 'vigor' | 'bite' | 'strength' | 'other',
+    rawHpDmg: number = 0
 ) => {
     // Context Construction
     const ctx: DamageContext = {
@@ -238,7 +239,8 @@ const handleDamage = (
         logs,
         hpDmg, spDmg, durDmg, isCrit, 
         isBlocked, 
-        sourceType
+        sourceType,
+        rawHpDmg
     };
 
     if (skillsEnabled) {
@@ -337,6 +339,7 @@ export const resolveStrike = (
   let hpDamage = 0;
   let spDamage = 0;
   let durDamage = 0;
+  let rawHpDmg = 0;
   const sourceType = (damageStatValue === getStat(attacker, defender, 'bite')) ? 'bite' : 'strength';
 
   // Apply "Blowing Bell" (Soul Taking) logic
@@ -353,17 +356,18 @@ export const resolveStrike = (
   }
 
   if (!isCrit) {
+    rawHpDmg = damageStatValue;
     if (isBlocked) {
-      hpDamage = Math.max(0, damageStatValue - defBlockRed);
+      hpDamage = Math.max(0, rawHpDmg - defBlockRed);
       if(logs) logs.push({ msg: `【格挡】${defender.name} 触发格挡!`, type: LogType.Block });
     } else {
-      hpDamage = damageStatValue;
+      hpDamage = rawHpDmg;
       if(logs) logs.push({ msg: `【主动进攻】${attacker.name} 发起进攻，伤害${hpDamage}。`, type: LogType.Damage });
     }
     spDamage += extraSpDmg; 
   } else {
     if(logs) logs.push({ msg: `【暴击】${attacker.name} 触发暴击!`, type: LogType.Crit });
-    let rawHpDmg = damageStatValue + attCritDmg;
+    rawHpDmg = damageStatValue + attCritDmg;
     let rawSpDmg = attVigor; 
     
     if (isBlocked) {
@@ -392,7 +396,7 @@ export const resolveStrike = (
   }
 
   // Construct Context and Delegate to `handleDamage` which runs Hooks
-  handleDamage(attacker, defender, hpDamage, spDamage, durDamage, isCrit, isBlocked, logs, skillsEnabled, sourceType);
+  handleDamage(attacker, defender, hpDamage, spDamage, durDamage, isCrit, isBlocked, logs, skillsEnabled, sourceType, rawHpDmg);
 
   return { att: attacker, def: defender, logs: logs || [], isCrit };
 };

@@ -393,19 +393,17 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         id: 'brocade_intimidate',
         name: '威吓',
         shout: '天下谁人不识我？',
-        dsl: '回合开始时（牙钳、角力、气势每有一项>对手+20）%发动，将对手暴击、防御、反击中的随机一项降为0，持续1回合',
+        dsl: '回合开始时（牙钳、角力、气势每有一项>对手）%发动，将对手暴击、防御、反击中的随机一项降为0，持续1回合',
         onRoundStart: (ctx, skill) => {
             const stats = ['bite', 'strength', 'vigor'] as const;
             let count = 0;
             const getRaw = (c: RuntimeCricket, s: string) => (c as any)[s] || 0;
             
             stats.forEach(st => {
-                if (getRaw(ctx.owner, st) > getRaw(ctx.opponent, st) + 20) count++;
+                if (getRaw(ctx.owner, st) > getRaw(ctx.opponent, st)) count++;
             });
             
-            // Assume 35% chance per stat to make it viable (max ~100%), 
-            // literal 1-3% is too low for a game skill.
-            if (count > 0 && check(count * 35)) {
+            if (count > 0 && check(count * 20)) {
                 const targets = ['deadliness', 'defence', 'counter'] as const;
                 const target = targets[Math.floor(Math.random() * 3)];
                 ctx.opponent.skillState.brocadeDebuff = target;
@@ -423,13 +421,15 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         shout: '红莲业火，焚妖荡魔！',
         dsl: '防御时66%发动，将减免的体力损伤反弹给对手',
         onBeforeReceiveDamage: (ctx, skill) => {
-            // Logic: If blocked, the amount reduced is (roughly) damageReduce (capped by incoming damage).
-            // This hook runs *before* damage is applied but *after* block calculation in resolveStrike.
-            // If ctx.isBlocked is true, damage reduction is applied.
+            // FIXED logic: Reflect actual prevented damage, capped by incoming raw damage
             if (ctx.isBlocked && check(66)) {
-                 const reflected = ctx.owner.damageReduce; // Use the stat directly as approximation of prevented damage
-                 ctx.opponent.currentHp = Math.max(0, ctx.opponent.currentHp - reflected);
-                 act(ctx, skill, `业火反噬！反弹${reflected}点损伤！`);
+                 const raw = ctx.rawHpDmg || 0;
+                 const reflected = Math.min(raw, ctx.owner.damageReduce); 
+                 
+                 if (reflected > 0) {
+                     ctx.opponent.currentHp = Math.max(0, ctx.opponent.currentHp - reflected);
+                     act(ctx, skill, `业火反噬！反弹${reflected}点损伤！`);
+                 }
             }
         }
     },

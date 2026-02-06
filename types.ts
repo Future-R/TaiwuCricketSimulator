@@ -111,6 +111,7 @@ export interface DamageContext extends BattleContext {
   reflected?: boolean; // If true, this is a reflected attack
   actualHpDmg?: number;
   actualSpDmg?: number;
+  rawHpDmg?: number;
 }
 
 export interface StatContext {
