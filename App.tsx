@@ -208,10 +208,24 @@ const App: React.FC = () => {
   const handleExportMatrixImage = async () => {
       if (matrixRef.current) {
           try {
-              const dataUrl = await toPng(matrixRef.current, {
+              const node = matrixRef.current;
+              // Capture full scrollable content
+              const scrollWidth = node.scrollWidth;
+              const scrollHeight = node.scrollHeight;
+
+              const dataUrl = await toPng(node, {
                   backgroundColor: '#09090b', // zinc-950
-                  pixelRatio: 2 // High resolution
+                  pixelRatio: 2, // High resolution
+                  width: scrollWidth,
+                  height: scrollHeight,
+                  style: {
+                      overflow: 'visible', // Force overflow visible
+                      maxHeight: 'none',
+                      height: 'auto',
+                      display: 'block'
+                  }
               });
+              
               const link = document.createElement('a');
               link.href = dataUrl;
               link.download = `全员胜率表_${new Date().toISOString().slice(0,10)}.png`;
@@ -220,7 +234,7 @@ const App: React.FC = () => {
               document.body.removeChild(link);
           } catch (e) {
               console.error("Snapshot failed", e);
-              alert("导出图片失败");
+              alert("导出图片失败: " + (e as Error).message);
           }
       }
   };
