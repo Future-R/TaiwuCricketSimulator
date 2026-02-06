@@ -24,7 +24,6 @@ export interface CricketData {
 
 export interface SkillState {
   // Generic state storage for skills (counters, stacks, flags)
-  // We use a flexible Record to avoid hardcoding specific skill fields here
   [key: string]: any; 
 }
 
@@ -99,6 +98,7 @@ export interface BattleContext {
   owner: RuntimeCricket;
   opponent: RuntimeCricket;
   logs: { msg: string; type: LogType }[] | null; // Nullable for optimization
+  getStat?: (target: RuntimeCricket, stat: 'vigor'|'strength'|'bite'|'deadliness'|'defence'|'counter'|'critDamage') => number;
 }
 
 export interface DamageContext extends BattleContext {
@@ -107,6 +107,7 @@ export interface DamageContext extends BattleContext {
   durDmg: number;
   isCrit: boolean;
   isBlocked: boolean;
+  isCounter?: boolean;
   sourceType: 'vigor' | 'bite' | 'strength' | 'other';
   reflected?: boolean; // If true, this is a reflected attack
   actualHpDmg?: number;
