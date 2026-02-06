@@ -90,8 +90,8 @@ const triggerHooks = (
         if (skill[hookName]) {
             // Meta-Check: Suppression
             if (canBeNegated && tianGuangSkill && skill.id !== 'tian_guang') { 
-                // Parse prob from DSL "若概率触发(66%)" or fallback to 66
-                let prob = 66;
+                // Parse prob from DSL "若概率触发(50%)" or fallback to 50
+                let prob = 50;
                 const match = tianGuangSkill.dsl?.match(/概率触发\((\d+)/);
                 if (match) prob = parseInt(match[1]);
 
@@ -198,11 +198,11 @@ export const processVigorCheck = (state: CombatState): { state: CombatState; p1I
 
   if (p1Vigor > p2Vigor) {
     s = addLog(s, `${p1.name} 气势更高！`, LogType.Attack);
-    handleDamage(p1, p2, 0, p1Vigor, 0, false, logs, s.skillsEnabled, 'vigor');
+    handleDamage(p1, p2, 0, p1Vigor, 0, false, false, logs, s.skillsEnabled, 'vigor');
     p1Starts = checkProb(80);
   } else if (p2Vigor > p1Vigor) {
     s = addLog(s, `${p2.name} 气势更高！`, LogType.Attack);
-    handleDamage(p2, p1, 0, p2Vigor, 0, false, logs, s.skillsEnabled, 'vigor');
+    handleDamage(p2, p1, 0, p2Vigor, 0, false, false, logs, s.skillsEnabled, 'vigor');
     p1Starts = checkProb(20);
   } else {
     p1Starts = checkProb(50);
@@ -220,6 +220,7 @@ const handleDamage = (
     spDmg: number,
     durDmg: number,
     isCrit: boolean,
+    isBlocked: boolean,
     logs: { msg: string; type: LogType }[],
     skillsEnabled: boolean,
     sourceType: 'vigor' | 'bite' | 'strength' | 'other'
@@ -231,7 +232,7 @@ const handleDamage = (
         opponent: attacker,
         logs,
         hpDmg, spDmg, durDmg, isCrit, 
-        isBlocked: false, // Default, overwritten if coming from resolveStrike
+        isBlocked, 
         sourceType
     };
 
@@ -243,7 +244,7 @@ const handleDamage = (
             if (skill.onBeforeReceiveDamage) {
                 if (tianGuangSkill && skill.id !== 'tian_guang') {
                     // Parse prob from DSL
-                    let prob = 66;
+                    let prob = 50;
                     const match = tianGuangSkill.dsl?.match(/概率触发\((\d+)/);
                     if (match) prob = parseInt(match[1]);
 
@@ -384,95 +385,106 @@ export const resolveStrike = (
   }
 
   // Construct Context and Delegate to `handleDamage` which runs Hooks
-  handleDamage(attacker, defender, hpDamage, spDamage, durDamage, isCrit, logs, skillsEnabled, sourceType);
+  handleDamage(attacker, defender, hpDamage, spDamage, durDamage, isCrit, isBlocked, logs, skillsEnabled, sourceType);
 
   return { att: attacker, def: defender, logs, isCrit };
 };
 
-// Returns 0 if P1 wins, 1 if P2 wins
 export const runInstantBattle = (
     c1: CricketData, 
     c2: CricketData, 
-    skillsEnabled: boolean = false,
-    onLongBattle?: (state: CombatState) => void
+    skillsEnabled: boolean,
+    onLongBattle?: (s: CombatState) => void
 ): number => {
     let state: CombatState = {
-      round: 0, phase: Phase.Setup, logs: [],
-      p1: createRuntimeCricket(c1), p2: createRuntimeCricket(c2),
-      winnerId: null, autoPlay: true, battleSpeed: 0, skillsEnabled,
-      suppressLogs: true // Enable log suppression
+        round: 0,
+        phase: Phase.Setup,
+        logs: [],
+        p1: createRuntimeCricket(c1),
+        p2: createRuntimeCricket(c2),
+        winnerId: null,
+        autoPlay: true,
+        battleSpeed: 0,
+        skillsEnabled,
+        suppressLogs: true
     };
-    
-    // Store original UUIDs to identify winner
-    const p1Uid = state.p1.uniqueId;
-    // const p2Uid = state.p2.uniqueId; 
 
-    let loops = 0;
-    const MAX = 200;
-    let p1Initiative = false;
-    let attackerIsP1 = false;
+    // PreFight
+    state = processPreFight(state);
+    if (state.winnerId) return state.winnerId === state.p1.uniqueId ? 0 : 1;
+
+    let loop = 0;
+    while (!state.winnerId && loop < 100) {
+        loop++;
+        
+        const vigorRes = processVigorCheck(state);
+        state = vigorRes.state;
+        if (state.winnerId) break;
+
+        const p1Initiative = vigorRes.p1Initiative;
+
+        // Exchange 1
+        state = resolveExchange(state, p1Initiative);
+        if (state.winnerId) break;
+
+        // Exchange 2
+        state = resolveExchange(state, !p1Initiative);
+        if (state.winnerId) break;
+
+        state.round++;
+    }
+
+    if (loop >= 100 && onLongBattle) {
+        onLongBattle(state);
+    }
+    
+    if (!state.winnerId) {
+         // Draw resolution: Health %
+         const p1Pct = state.p1.currentHp / state.p1.hp;
+         const p2Pct = state.p2.currentHp / state.p2.hp;
+         return p1Pct >= p2Pct ? 0 : 1;
+    }
+
+    return state.winnerId === state.p1.uniqueId ? 0 : 1;
+};
+
+const resolveExchange = (state: CombatState, initiatorIsP1: boolean): CombatState => {
+    let currentAttackerIsP1 = initiatorIsP1;
     let counterCount = 0;
-    let lastCrit = false;
-    let warned = false;
+    let lastHitWasCrit = false;
 
-    while (!state.winnerId && loops < MAX) {
-        loops++;
-        if (state.phase === Phase.Setup) state.phase = Phase.PreFight;
-        else if (state.phase === Phase.PreFight) state = processPreFight(state);
-        else if (state.phase === Phase.VigorCheck) {
-            // Check for Long Battle Warning
-            if (state.round === 100 && !warned && onLongBattle) {
-                warned = true;
-                onLongBattle(state);
-            }
+    while (true) {
+        if (state.winnerId) break;
 
-            const res = processVigorCheck(state);
-            state = res.state;
-            p1Initiative = res.p1Initiative;
-            attackerIsP1 = p1Initiative;
-            state.phase = Phase.FirstHalf;
-            counterCount = 0;
-            lastCrit = false;
-        }
-        else if (state.phase === Phase.FirstHalf || state.phase === Phase.SecondHalf) {
-            const isFirst = state.phase === Phase.FirstHalf;
-            const attacker = attackerIsP1 ? state.p1 : state.p2;
-            const defender = attackerIsP1 ? state.p2 : state.p1;
+        const attacker = currentAttackerIsP1 ? state.p1 : state.p2;
+        const defender = currentAttackerIsP1 ? state.p2 : state.p1;
+
+        // Counter Check
+        if (counterCount > 0) {
+            let counterChance = getStat(attacker, defender, 'counter');
+            if (attacker.skillState.trueColorTriggered) counterChance = Math.ceil(counterChance * 1.5);
+            if (attacker.skillState.brocadeDebuff === 'counter') counterChance = 0;
             
-            let canAttack = true;
-            if (counterCount > 0) {
-                 const chance = getStat(attacker, defender, 'counter') - (counterCount - 1) * 5;
-                 if (!checkProb(chance)) {
-                     canAttack = false;
-                     counterCount = 0;
-                     lastCrit = false;
-                     state.phase = isFirst ? Phase.SecondHalf : Phase.RoundEnd;
-                     if (isFirst) attackerIsP1 = !p1Initiative;
-                 }
-            }
-
-            if (canAttack) {
-                 const roundInit = isFirst ? p1Initiative : !p1Initiative;
-                 const useBite = attackerIsP1 === roundInit;
-                 const val = useBite ? getStat(attacker, defender, 'bite') : getStat(attacker, defender, 'strength');
-                 const res = resolveStrike(attacker, defender, val, lastCrit, false, skillsEnabled);
-                 if (checkGameOver(state.p1, state.p2)) { state.winnerId = checkGameOver(state.p1, state.p2); break; }
-                 lastCrit = res.isCrit;
-                 counterCount++;
-                 attackerIsP1 = !attackerIsP1;
-            }
+            const chance = counterChance - (counterCount - 1) * 5;
+            if (!checkProb(chance)) break; 
         }
-        else if (state.phase === Phase.RoundEnd) { state.round++; state.phase = Phase.VigorCheck; }
-        else if (state.phase === Phase.GameOver) break;
+
+        const useBite = (currentAttackerIsP1 === initiatorIsP1);
+        const statVal = useBite 
+            ? getStat(attacker, defender, 'bite')
+            : getStat(attacker, defender, 'strength');
+
+        const res = resolveStrike(attacker, defender, statVal, lastHitWasCrit, false, state.skillsEnabled);
+        lastHitWasCrit = res.isCrit;
+
+        const w = checkGameOver(state.p1, state.p2);
+        if (w) {
+            state.winnerId = w;
+            break;
+        }
+
+        counterCount++;
+        currentAttackerIsP1 = !currentAttackerIsP1;
     }
-    
-    // Check Winner by Unique ID, not Template ID
-    if (state.winnerId) {
-        return state.winnerId === p1Uid ? 0 : 1;
-    }
-    
-    // Tie breaker
-    const s1 = state.p1.currentHp + state.p1.currentSp + state.p1.currentDurability;
-    const s2 = state.p2.currentHp + state.p2.currentSp + state.p2.currentDurability;
-    return s1 >= s2 ? 0 : 1;
+    return state;
 };

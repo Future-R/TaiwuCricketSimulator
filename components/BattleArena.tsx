@@ -65,10 +65,10 @@ export const CricketDetail: React.FC<Props> = ({ cricket, isRed, showSkills }) =
           {/* Active Skills */}
           {showSkills && cricket.activeSkills && cricket.activeSkills.length > 0 && (
              <div className="w-full pt-4 border-t border-zinc-800 mt-2">
-                <h4 className="text-zinc-500 text-xs font-bold mb-2 uppercase tracking-wider">技能</h4>
+                <h4 className="text-zinc-500 text-xs font-bold mb-2 uppercase tracking-wider">专属技能</h4>
                 <div className="flex flex-wrap gap-2">
                     {cricket.activeSkills.map(skill => (
-                        <div key={skill.id} className="px-3 py-1.5 bg-purple-900/30 border border-purple-700/50 rounded shadow-sm">
+                        <div key={skill.id} className="px-3 py-1.5 bg-purple-900/30 border border-purple-700/50 rounded shadow-sm cursor-help hover:bg-purple-800/40 transition-colors" title={skill.dsl}>
                             <span className="text-purple-300 text-sm font-bold">{skill.name}</span>
                         </div>
                     ))}
