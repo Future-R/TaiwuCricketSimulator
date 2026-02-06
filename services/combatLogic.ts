@@ -88,12 +88,10 @@ const triggerHooks = (
     
     owner.activeSkills.forEach(skill => {
         if (skill[hookName]) {
-            // Meta-Check: Suppression
+            // Meta-Check: Suppression (Tian Guang)
             if (canBeNegated && tianGuangSkill && skill.id !== 'tian_guang') { 
-                // Parse prob from DSL "若概率触发(50%)" or fallback to 50
-                let prob = 50;
-                const match = tianGuangSkill.dsl?.match(/概率触发\((\d+)/);
-                if (match) prob = parseInt(match[1]);
+                // Optimized: Use meta property instead of regex
+                const prob = tianGuangSkill.meta?.tianGuangProb ?? 50;
 
                 if (checkProb(prob)) {
                     if (ctx.logs) {
@@ -148,14 +146,17 @@ export const processPreFight = (state: CombatState): CombatState => {
   }
 
   if (state.skillsEnabled) {
-      const logs: { msg: string; type: LogType }[] = [];
+      // Optimization: No logs if suppressed
+      const logs: { msg: string; type: LogType }[] | null = state.suppressLogs ? null : [];
       const ctx1 = { state: nextState, owner: p1, opponent: p2, logs };
       triggerHooks(p1, p2, 'onBattleStart', ctx1);
       
       const ctx2 = { state: nextState, owner: p2, opponent: p1, logs };
       triggerHooks(p2, p1, 'onBattleStart', ctx2);
 
-      for(const l of logs) nextState = addLog(nextState, l.msg, l.type);
+      if (logs) {
+         for(const l of logs) nextState = addLog(nextState, l.msg, l.type);
+      }
   }
 
   // Grade Gap
@@ -172,12 +173,14 @@ export const processPreFight = (state: CombatState): CombatState => {
 export const processRoundStart = (state: CombatState): CombatState => {
     let s = { ...state };
     if (!s.skillsEnabled) return s;
-    const logs: { msg: string; type: LogType }[] = [];
+    const logs: { msg: string; type: LogType }[] | null = state.suppressLogs ? null : [];
 
     triggerHooks(s.p1, s.p2, 'onRoundStart', { state: s, owner: s.p1, opponent: s.p2, logs });
     triggerHooks(s.p2, s.p1, 'onRoundStart', { state: s, owner: s.p2, opponent: s.p1, logs });
 
-    for(const l of logs) s = addLog(s, l.msg, l.type);
+    if (logs) {
+        for(const l of logs) s = addLog(s, l.msg, l.type);
+    }
     if (checkGameOver(s.p1, s.p2)) { s.winnerId = checkGameOver(s.p1, s.p2); s.phase = Phase.GameOver; }
     return s;
 };
@@ -188,7 +191,7 @@ export const processVigorCheck = (state: CombatState): { state: CombatState; p1I
 
   const p1 = s.p1;
   const p2 = s.p2;
-  const logs: { msg: string; type: LogType }[] = [];
+  const logs: { msg: string; type: LogType }[] | null = state.suppressLogs ? null : [];
 
   const p1Vigor = getStat(p1, p2, 'vigor');
   const p2Vigor = getStat(p2, p1, 'vigor');
@@ -208,7 +211,9 @@ export const processVigorCheck = (state: CombatState): { state: CombatState; p1I
     p1Starts = checkProb(50);
   }
 
-  for(const l of logs) s = addLog(s, l.msg, l.type);
+  if (logs) {
+      for(const l of logs) s = addLog(s, l.msg, l.type);
+  }
   if (checkGameOver(s.p1, s.p2)) { s.winnerId = checkGameOver(s.p1, s.p2); s.phase = Phase.GameOver; }
   return { state: s, p1Initiative: p1Starts };
 };
@@ -221,7 +226,7 @@ const handleDamage = (
     durDmg: number,
     isCrit: boolean,
     isBlocked: boolean,
-    logs: { msg: string; type: LogType }[],
+    logs: { msg: string; type: LogType }[] | null,
     skillsEnabled: boolean,
     sourceType: 'vigor' | 'bite' | 'strength' | 'other'
 ) => {
@@ -243,14 +248,14 @@ const handleDamage = (
         defender.activeSkills.forEach(skill => {
             if (skill.onBeforeReceiveDamage) {
                 if (tianGuangSkill && skill.id !== 'tian_guang') {
-                    // Parse prob from DSL
-                    let prob = 50;
-                    const match = tianGuangSkill.dsl?.match(/概率触发\((\d+)/);
-                    if (match) prob = parseInt(match[1]);
+                    // Optimized: Use meta
+                    const prob = tianGuangSkill.meta?.tianGuangProb ?? 50;
 
                     if (checkProb(prob)) {
-                        logs.push({ msg: `「${tianGuangSkill.shout}」`, type: LogType.Shout });
-                        logs.push({ msg: `【天光】阻止了${defender.name}的【${skill.name}】！`, type: LogType.Skill });
+                        if (logs) {
+                            logs.push({ msg: `「${tianGuangSkill.shout}」`, type: LogType.Shout });
+                            logs.push({ msg: `【天光】阻止了${defender.name}的【${skill.name}】！`, type: LogType.Skill });
+                        }
                         return;
                     }
                 }
@@ -288,11 +293,13 @@ export const resolveStrike = (
   defender: RuntimeCricket,
   damageStatValue: number, 
   _isCritCycle: boolean, 
-  forceCrit: boolean = false, 
-  skillsEnabled: boolean = true 
+  forceCrit: boolean, 
+  skillsEnabled: boolean,
+  suppressLogs: boolean = false
 ): { att: RuntimeCricket; def: RuntimeCricket; logs: { msg: string; type: LogType }[]; isCrit: boolean } => {
   
-  const logs: { msg: string; type: LogType }[] = [];
+  // Optimization: Don't create array if suppressed, but return type requires it, so we return empty at end
+  const logs: { msg: string; type: LogType }[] | null = suppressLogs ? null : [];
   
   // 0. Pre-Attack Modifiers (Flags)
   let avoidBlock = false;
@@ -337,37 +344,37 @@ export const resolveStrike = (
   if (skillsEnabled && attacker.skillIds?.includes('soul_taking') && sourceType === 'bite') {
       // Trigger Shout if exists
       const bell = attacker.activeSkills.find(s => s.id === 'soul_taking');
-      if (bell && bell.shout && logs.filter(l => l.type === LogType.Shout).length === 0) {
+      if (bell && bell.shout && logs && logs.filter(l => l.type === LogType.Shout).length === 0) {
           logs.push({ msg: `「${bell.shout}」`, type: LogType.Shout });
       }
       
       extraSpDmg += attVigor;
-      logs.push({ msg: `【摄魂】附加${attVigor}斗性伤害。`, type: LogType.Effect });
+      if(logs) logs.push({ msg: `【摄魂】附加${attVigor}斗性伤害。`, type: LogType.Effect });
   }
 
   if (!isCrit) {
     if (isBlocked) {
       hpDamage = Math.max(0, damageStatValue - defBlockRed);
-      logs.push({ msg: `【格挡】${defender.name} 触发格挡!`, type: LogType.Block });
+      if(logs) logs.push({ msg: `【格挡】${defender.name} 触发格挡!`, type: LogType.Block });
     } else {
       hpDamage = damageStatValue;
-      logs.push({ msg: `【主动进攻】${attacker.name} 发起进攻，伤害${hpDamage}。`, type: LogType.Damage });
+      if(logs) logs.push({ msg: `【主动进攻】${attacker.name} 发起进攻，伤害${hpDamage}。`, type: LogType.Damage });
     }
     spDamage += extraSpDmg; 
   } else {
-    logs.push({ msg: `【暴击】${attacker.name} 触发暴击!`, type: LogType.Crit });
+    if(logs) logs.push({ msg: `【暴击】${attacker.name} 触发暴击!`, type: LogType.Crit });
     let rawHpDmg = damageStatValue + attCritDmg;
     let rawSpDmg = attVigor; 
     
     if (isBlocked) {
       hpDamage = Math.max(0, rawHpDmg - defBlockRed);
       spDamage = Math.max(0, rawSpDmg - defBlockRed);
-      logs.push({ msg: `【格挡】${defender.name} 触发格挡!`, type: LogType.Block });
+      if(logs) logs.push({ msg: `【格挡】${defender.name} 触发格挡!`, type: LogType.Block });
     } else {
       hpDamage = rawHpDmg;
       spDamage = rawSpDmg;
       durDamage = 1; 
-      logs.push({ msg: `${defender.name} 受到重创！(耐久 -1)`, type: LogType.Damage });
+      if(logs) logs.push({ msg: `${defender.name} 受到重创！(耐久 -1)`, type: LogType.Damage });
     }
   }
 
@@ -375,19 +382,19 @@ export const resolveStrike = (
   if (isCrit && !isBlocked && checkProb(attacker.injuryOdds)) {
       if (checkProb(35)) {
         const r = Math.random();
-        if (r < 0.33) { defender.injuries.vigor++; logs.push({ msg: `${defender.name} 气势受损！`, type: LogType.Effect }); }
-        else if (r < 0.66) { defender.injuries.strength++; logs.push({ msg: `${defender.name} 角力受损！`, type: LogType.Effect }); }
-        else { defender.injuries.bite++; logs.push({ msg: `${defender.name} 牙钳受损！`, type: LogType.Effect }); }
+        if (r < 0.33) { defender.injuries.vigor++; if(logs) logs.push({ msg: `${defender.name} 气势受损！`, type: LogType.Effect }); }
+        else if (r < 0.66) { defender.injuries.strength++; if(logs) logs.push({ msg: `${defender.name} 角力受损！`, type: LogType.Effect }); }
+        else { defender.injuries.bite++; if(logs) logs.push({ msg: `${defender.name} 牙钳受损！`, type: LogType.Effect }); }
       } else {
-        if (Math.random() < 0.5) { defender.injuries.hp += 5; hpDamage += 5; logs.push({ msg: `耐力受损(+5伤)`, type: LogType.Effect }); }
-        else { defender.injuries.sp += 5; spDamage += 5; logs.push({ msg: `斗性受损(+5伤)`, type: LogType.Effect }); }
+        if (Math.random() < 0.5) { defender.injuries.hp += 5; hpDamage += 5; if(logs) logs.push({ msg: `耐力受损(+5伤)`, type: LogType.Effect }); }
+        else { defender.injuries.sp += 5; spDamage += 5; if(logs) logs.push({ msg: `斗性受损(+5伤)`, type: LogType.Effect }); }
       }
   }
 
   // Construct Context and Delegate to `handleDamage` which runs Hooks
   handleDamage(attacker, defender, hpDamage, spDamage, durDamage, isCrit, isBlocked, logs, skillsEnabled, sourceType);
 
-  return { att: attacker, def: defender, logs, isCrit };
+  return { att: attacker, def: defender, logs: logs || [], isCrit };
 };
 
 export const runInstantBattle = (
@@ -474,7 +481,7 @@ const resolveExchange = (state: CombatState, initiatorIsP1: boolean): CombatStat
             ? getStat(attacker, defender, 'bite')
             : getStat(attacker, defender, 'strength');
 
-        const res = resolveStrike(attacker, defender, statVal, lastHitWasCrit, false, state.skillsEnabled);
+        const res = resolveStrike(attacker, defender, statVal, lastHitWasCrit, false, state.skillsEnabled, state.suppressLogs);
         lastHitWasCrit = res.isCrit;
 
         const w = checkGameOver(state.p1, state.p2);

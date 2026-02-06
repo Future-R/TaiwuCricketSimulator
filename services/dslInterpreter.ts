@@ -1,5 +1,5 @@
 
-import { LogType, SkillDefinition } from '../types';
+import { LogType, SkillDefinition, CompiledDSL } from '../types';
 
 // 正则表达式定义
 const REGEX = {
@@ -72,7 +72,7 @@ const parseExpression = (expr: string, ctx: any, skill: SkillDefinition): number
         }
         return result;
     } catch (e) {
-        console.warn("DSL Eval Error:", expr, e);
+        // console.warn("DSL Eval Error:", expr, e); // Suppress warning for perf
         return 0;
     }
 };
@@ -99,9 +99,6 @@ const parseActionValue = (valStr: string, ctx: any): number => {
     if (valStr.includes('%')) {
         const pct = valStr.match(/(\d+)%/);
         if (pct) ratio = parseInt(pct[1]) / 100;
-        
-        // 特殊情况：如果包含%但之前没匹配到基数（例如 "200%回合数"），
-        // 上面的 base 应该已经由 includes('回合数') 设置好了，这里只处理 ratio
     } else if (valStr.includes('一半')) {
         ratio = 0.5;
     }
@@ -110,187 +107,252 @@ const parseActionValue = (valStr: string, ctx: any): number => {
     return Math.ceil(base * ratio);
 };
 
-// --- CACHING LAYER ---
+// --- COMPILATION LAYER ---
 
-// Map<SkillID, Map<HookName, String[]>>
-// Maps a skill to a map of hooks, where each hook has a list of relevant DSL sentences to execute.
-const dslCache = new Map<string, Map<string, string[]>>();
+type InstructionType = 'Condition' | 'Action';
+interface CompiledInstruction {
+    type: InstructionType;
+    kind: string; // e.g., 'Prob', 'Heal'
+    args: any[];
+}
 
 export const clearDSLCache = (skillId?: string) => {
-    if (skillId) {
-        dslCache.delete(skillId);
-    } else {
-        dslCache.clear();
-    }
+    // Legacy support, now compilation happens on registry init
 };
 
-const parseAndCacheDSL = (skillId: string, dsl: string) => {
-    const hookMap = new Map<string, string[]>();
-    const sentences = dsl.split(/[;；]/);
+export const compileSkill = (skill: SkillDefinition) => {
+    if (!skill.dsl) return;
+
+    const compiled: CompiledDSL = { hooks: new Map() };
+    const meta: any = {};
+    const sentences = skill.dsl.split(/[;；]/);
 
     for (const sentence of sentences) {
         const cleanSentence = sentence.trim();
         if (!cleanSentence) continue;
         
-        // Identify which hooks this sentence applies to
+        // 1. Identify Hook & Strip Trigger
+        let hookKeys: string[] = [];
+        let content = cleanSentence;
+
         for (const [key, regex] of Object.entries(REGEX.Trigger)) {
             if (regex.test(cleanSentence)) {
-                // Map Trigger Key to Hook Name(s)
-                const hooks: string[] = [];
-                if (key === 'BattleStart') hooks.push('onBattleStart');
-                else if (key === 'RoundStart') hooks.push('onRoundStart');
-                else if (key === 'BeforeAttack') hooks.push('onBeforeAttack');
-                else if (key === 'BeforeDefend') hooks.push('onBeforeReceiveDamage'); // Specifically checked via isBlocked usually, but valid hook
-                else if (key === 'ReceiveDamage') { hooks.push('onAfterReceiveDamage'); hooks.push('onBeforeReceiveDamage'); }
-                else if (key === 'DealDamage') hooks.push('onAfterDealDamage');
-                else if (key === 'StatCalc') hooks.push('onStatCalculate');
-                else if (key === 'Defeat') hooks.push('onDefeat');
-                else if (key === 'BeHit') hooks.push('onAfterReceiveDamage');
-
-                // Add sentence to all relevant hooks
-                hooks.forEach(h => {
-                    if (!hookMap.has(h)) hookMap.set(h, []);
-                    hookMap.get(h)!.push(cleanSentence); // Store full sentence, stripping done at runtime
-                });
-                
-                break; 
-            }
-        }
-    }
-
-    dslCache.set(skillId, hookMap);
-};
-
-// --- 执行器 ---
-
-export const executeDSL = (
-    dsl: string | undefined,
-    hookName: keyof SkillDefinition,
-    ctx: any, 
-    skill: SkillDefinition
-): any => {
-    if (!dsl) return;
-
-    // 1. Check Cache
-    if (!dslCache.has(skill.id)) {
-        parseAndCacheDSL(skill.id, dsl);
-    }
-    const skillHooks = dslCache.get(skill.id)!;
-    
-    // 2. Get Relevant Sentences
-    const sentences = skillHooks.get(hookName);
-    if (!sentences || sentences.length === 0) return;
-
-    // 3. Execute Sentences
-    for (const sentence of sentences) {
-        let content = sentence;
-        // Optimization: Use the regex to strip the trigger phrase.
-        for (const regex of Object.values(REGEX.Trigger)) {
-            if (regex.test(sentence)) {
-                content = sentence.replace(regex, '');
+                content = cleanSentence.replace(regex, ''); // Strip
+                if (key === 'BattleStart') hookKeys.push('onBattleStart');
+                else if (key === 'RoundStart') hookKeys.push('onRoundStart');
+                else if (key === 'BeforeAttack') hookKeys.push('onBeforeAttack');
+                else if (key === 'BeforeDefend') hookKeys.push('onBeforeReceiveDamage');
+                else if (key === 'ReceiveDamage') { hookKeys.push('onAfterReceiveDamage'); hookKeys.push('onBeforeReceiveDamage'); }
+                else if (key === 'DealDamage') hookKeys.push('onAfterDealDamage');
+                else if (key === 'StatCalc') hookKeys.push('onStatCalculate');
+                else if (key === 'Defeat') hookKeys.push('onDefeat');
+                else if (key === 'BeHit') hookKeys.push('onAfterReceiveDamage');
+                // Tian Guang optimization
+                else if (key === 'SkillActivate') {
+                    // Extract prob immediately
+                    const probMatch = content.match(/概率触发\((\d+)/);
+                    if (probMatch) meta.tianGuangProb = parseInt(probMatch[1]);
+                }
                 break;
             }
         }
 
-        // Parse conditions and actions
+        if (hookKeys.length === 0) continue;
+
+        // 2. Parse Content into Instructions
+        const instructions: CompiledInstruction[] = [];
         const parts = content.split(/[,，]/);
-        let conditionMet = true;
 
         for (const part of parts) {
             const p = part.trim();
             if (!p) continue;
 
-            // --- 条件检查 ---
+            // --- CONDITIONS ---
             if (REGEX.Condition.If.test(p)) {
                 const sub = p.replace(REGEX.Condition.If, '').trim();
-
-                // 概率
+                
+                // Prob
                 const probMatch = sub.match(REGEX.Condition.Prob);
                 if (probMatch) {
-                    if (!check(parseFloat(probMatch[1]))) { conditionMet = false; break; }
+                    instructions.push({ type: 'Condition', kind: 'Prob', args: [parseFloat(probMatch[1])] });
                     continue;
                 }
-
-                // 攻击类型
+                // AttackType
                 const attMatch = sub.match(REGEX.Condition.AttackType);
                 if (attMatch) {
-                    const type = attMatch[1];
+                    instructions.push({ type: 'Condition', kind: 'AttackType', args: [attMatch[1]] });
+                    continue;
+                }
+                // StatType
+                const statMatch = sub.match(REGEX.Condition.StatType);
+                if (statMatch) {
+                    instructions.push({ type: 'Condition', kind: 'StatType', args: [statMatch[1]] });
+                    continue;
+                }
+                // Compare
+                const cmpMatch = sub.match(REGEX.Condition.StatCompare);
+                if (cmpMatch) {
+                    instructions.push({ type: 'Condition', kind: 'StatCompare', args: [cmpMatch[1], cmpMatch[2], cmpMatch[3], cmpMatch[4]] });
+                    continue;
+                }
+                // NotBlocked
+                if (REGEX.Condition.NotBlocked.test(sub)) {
+                    instructions.push({ type: 'Condition', kind: 'NotBlocked', args: [] });
+                    continue;
+                }
+            } 
+            // --- ACTIONS ---
+            else {
+                 // Heal
+                const healMatch = p.match(REGEX.Action.Heal);
+                if (healMatch) {
+                    instructions.push({ type: 'Action', kind: 'Heal', args: [healMatch[1], p] });
+                    continue;
+                }
+                // Damage
+                const dmgMatch = p.match(REGEX.Action.Damage);
+                if (dmgMatch) {
+                    instructions.push({ type: 'Action', kind: 'Damage', args: [dmgMatch[1], p] });
+                    continue;
+                }
+                // StackSelf
+                const stackMatch = p.match(REGEX.Action.StackAddSelf);
+                if (stackMatch) {
+                    instructions.push({ type: 'Action', kind: 'StackAddSelf', args: [stackMatch[1], parseInt(stackMatch[2])] });
+                    continue;
+                }
+                // StackClear
+                if (REGEX.Action.StackClear.test(p)) {
+                    instructions.push({ type: 'Action', kind: 'StackClear', args: [] });
+                    continue;
+                }
+                // Calc
+                const calcMatch = p.match(REGEX.Action.Calc);
+                if (calcMatch) {
+                    instructions.push({ type: 'Action', kind: 'Calc', args: [calcMatch[1]] });
+                    continue;
+                }
+                // Avoid
+                const avoidMatch = p.match(REGEX.Action.Avoid);
+                if (avoidMatch) {
+                    instructions.push({ type: 'Action', kind: 'Avoid', args: [] });
+                    continue;
+                }
+                // Reflect
+                const reflectMatch = p.match(REGEX.Action.Reflect);
+                if (reflectMatch) {
+                    instructions.push({ type: 'Action', kind: 'Reflect', args: [] });
+                    continue;
+                }
+                // Nullify
+                const nullMatch = p.match(REGEX.Action.Nullify);
+                if (nullMatch) {
+                    instructions.push({ type: 'Action', kind: 'Nullify', args: [] });
+                    continue;
+                }
+            }
+        }
+
+        if (instructions.length > 0) {
+            hookKeys.forEach(h => {
+                if (!compiled.hooks.has(h)) compiled.hooks.set(h, []);
+                compiled.hooks.get(h)!.push(instructions);
+            });
+        }
+    }
+
+    skill.compiled = compiled;
+    skill.meta = { ...skill.meta, ...meta };
+};
+
+// --- EXECUTION LAYER ---
+
+export const executeDSL = (
+    _dsl: string | undefined, // Unused in optimized path
+    hookName: keyof SkillDefinition,
+    ctx: any, 
+    skill: SkillDefinition
+): any => {
+    // 1. Use Compiled Logic
+    if (!skill.compiled) {
+        return; // Should be compiled on init
+    }
+    
+    const sentenceBatches = skill.compiled.hooks.get(hookName);
+    if (!sentenceBatches) return;
+
+    for (const instructions of sentenceBatches) {
+        let conditionMet = true;
+
+        for (const instr of instructions) {
+            // CONDITIONS
+            if (instr.type === 'Condition') {
+                if (instr.kind === 'Prob') {
+                    if (!check(instr.args[0])) { conditionMet = false; break; }
+                } 
+                else if (instr.kind === 'AttackType') {
+                    const type = instr.args[0];
                     if (type.includes('暴击') && !type.includes('非') && !ctx.isCrit) { conditionMet = false; break; }
                     if (type.includes('非暴击') && ctx.isCrit) { conditionMet = false; break; }
                     if (type.includes('反击') && ctx.sourceType !== 'strength') { conditionMet = false; break; }
                     if (type.includes('牙钳') && ctx.sourceType !== 'bite') { conditionMet = false; break; }
                     if (type.includes('气势') && ctx.sourceType !== 'vigor') { conditionMet = false; break; }
-                    continue;
                 }
-
-                // 属性类型 (StatCalc)
-                const statMatch = sub.match(REGEX.Condition.StatType);
-                if (statMatch) {
-                    const sName = statMatch[1];
+                else if (instr.kind === 'StatType') {
+                    const sName = instr.args[0];
                     let field = '';
                     if (sName.includes('暴击伤害') || sName.includes('暴伤')) field = 'critDamage';
                     else if (sName.includes('牙钳')) field = 'bite';
                     else if (sName.includes('角力')) field = 'strength';
                     else if (sName.includes('气势')) field = 'vigor';
-                    
                     if (ctx.stat !== field) { conditionMet = false; break; }
-                    continue;
                 }
-
-                // 属性比较
-                const cmpMatch = sub.match(REGEX.Condition.StatCompare);
-                if (cmpMatch) {
-                    const targetName = cmpMatch[1]; 
-                    const statName = cmpMatch[2]; 
-                    const op = cmpMatch[3];
-                    const valStr = cmpMatch[4]; 
-
+                else if (instr.kind === 'StatCompare') {
+                    const [targetName, statName, op, valStr] = instr.args;
                     const target = targetName === '自身' ? ctx.owner : ctx.opponent;
                     let curr = 0, max = 1;
-                    
                     if (statName.includes('体力')) { curr = target.currentHp; max = target.hp; }
                     else if (statName.includes('斗性')) { curr = target.currentSp; max = target.sp; }
                     else if (statName.includes('耐久')) { curr = target.currentDurability; max = target.maxDurability; }
-                    
                     let threshold = valStr.includes('%') ? max * (parseFloat(valStr)/100) : parseFloat(valStr);
-                    
                     if (op === '<' && !(curr < threshold)) conditionMet = false;
                     if (op === '>' && !(curr > threshold)) conditionMet = false;
                     if (!conditionMet) break;
-                    continue;
                 }
-                
-                // Not Blocked
-                if (REGEX.Condition.NotBlocked.test(sub)) {
+                else if (instr.kind === 'NotBlocked') {
                     if (ctx.isBlocked) { conditionMet = false; break; }
-                    continue;
                 }
-            }
-
-            if (!conditionMet) break;
-
-            // --- 动作执行 ---
-            
-            // Log Shout (Check logs existence to support simulation mode where logs might be suppressed or ignored)
-            if (skill.shout && ctx.logs && !ctx.logs.find((l:any) => l.type === LogType.Shout && l.msg.includes(skill.shout))) {
-                 ctx.logs.push({ msg: `「${skill.shout}」`, type: LogType.Shout });
-                 ctx.logs.push({ msg: `【${skill.name}】发动！`, type: LogType.Skill });
-            }
-
-            // 恢复
-            const healMatch = p.match(REGEX.Action.Heal);
-            if (healMatch) {
-                const val = parseActionValue(healMatch[1], ctx);
-                if (p.includes('体力')) ctx.owner.currentHp = Math.min(ctx.owner.hp, ctx.owner.currentHp + val);
-                if (p.includes('斗性')) ctx.owner.currentSp = Math.min(ctx.owner.sp, ctx.owner.currentSp + val);
-                if (ctx.logs) ctx.logs.push({ msg: `恢复${val}点${p.includes('体力')?'体力':'斗性'}`, type: LogType.Effect });
                 continue;
             }
 
-            // 造成损伤
-            const dmgMatch = p.match(REGEX.Action.Damage);
-            if (dmgMatch) {
-                const val = parseActionValue(dmgMatch[1], ctx);
+            // ACTIONS
+            if (!conditionMet) break;
+
+            // Log Shout (Optimized check)
+            if (skill.shout && ctx.logs) {
+                 // Manual loop for perf instead of find/includes
+                 let shouted = false;
+                 for(let i=ctx.logs.length-1; i>=0; i--) {
+                     if(ctx.logs[i].type === LogType.Shout && ctx.logs[i].message.includes(skill.shout)) {
+                         shouted = true; break;
+                     }
+                 }
+                 if (!shouted) {
+                     ctx.logs.push({ msg: `「${skill.shout}」`, type: LogType.Shout });
+                     ctx.logs.push({ msg: `【${skill.name}】发动！`, type: LogType.Skill });
+                 }
+            }
+
+            if (instr.kind === 'Heal') {
+                const val = parseActionValue(instr.args[0], ctx);
+                const p = instr.args[1];
+                if (p.includes('体力')) ctx.owner.currentHp = Math.min(ctx.owner.hp, ctx.owner.currentHp + val);
+                if (p.includes('斗性')) ctx.owner.currentSp = Math.min(ctx.owner.sp, ctx.owner.currentSp + val);
+                if (ctx.logs) ctx.logs.push({ msg: `恢复${val}点${p.includes('体力')?'体力':'斗性'}`, type: LogType.Effect });
+            }
+            else if (instr.kind === 'Damage') {
+                const val = parseActionValue(instr.args[0], ctx);
+                const p = instr.args[1];
                 if (ctx.opponent) {
                     if (p.includes('体力')) ctx.opponent.currentHp = Math.max(0, ctx.opponent.currentHp - val);
                     if (p.includes('斗性')) ctx.opponent.currentSp = Math.max(0, ctx.opponent.currentSp - val);
@@ -299,57 +361,34 @@ export const executeDSL = (
                     }
                     if (ctx.logs) ctx.logs.push({ msg: `造成${val}点额外损伤`, type: LogType.Damage });
                 }
-                continue;
             }
-
-            // 增加层数
-            const stackMatch = p.match(REGEX.Action.StackAddSelf);
-            if (stackMatch) {
-                const op = stackMatch[1];
-                const val = parseInt(stackMatch[2]);
+            else if (instr.kind === 'StackAddSelf') {
+                const [op, val] = instr.args;
                 const key = `${skill.id}_stack`;
                 const current = ctx.owner.skillState[key] || 0;
                 ctx.owner.skillState[key] = op === '增加' ? current + val : Math.max(0, current - val);
                 if (ctx.logs) ctx.logs.push({ msg: `层数${op === '增加'?'+':'-'}${val} (当前:${ctx.owner.skillState[key]})`, type: LogType.Effect });
-                continue;
             }
-
-            // 清除层数
-            if (REGEX.Action.StackClear.test(p)) {
+            else if (instr.kind === 'StackClear') {
                 ctx.owner.skillState[`${skill.id}_stack`] = 0;
                 if (ctx.logs) ctx.logs.push({ msg: `层数清零`, type: LogType.Effect });
-                continue;
             }
-
-            // 计算属性
-            const calcMatch = p.match(REGEX.Action.Calc);
-            if (calcMatch && hookName === 'onStatCalculate') {
-                const expr = calcMatch[1];
-                return parseExpression(expr, ctx, skill);
+            else if (instr.kind === 'Calc' && hookName === 'onStatCalculate') {
+                return parseExpression(instr.args[0], ctx, skill);
             }
-
-            // 避免
-            const avoidMatch = p.match(REGEX.Action.Avoid);
-            if (avoidMatch) {
+            else if (instr.kind === 'Avoid') {
                 if (hookName === 'onBeforeAttack') return { avoidBlock: true };
                 if (hookName === 'onBeforeReceiveDamage') return { isCrit: false };
             }
-
-            // 反弹
-            const reflectMatch = p.match(REGEX.Action.Reflect);
-            if (reflectMatch && hookName === 'onBeforeReceiveDamage') {
+            else if (instr.kind === 'Reflect' && hookName === 'onBeforeReceiveDamage') {
                 const amt = Math.min(ctx.hpDmg, ctx.owner.damageReduce);
                 ctx.opponent.currentHp = Math.max(0, ctx.opponent.currentHp - amt);
                 if (ctx.logs) ctx.logs.push({ msg: `反弹${amt}点损伤`, type: LogType.Damage });
-                continue;
             }
-            
-            // 抵消
-             const nullMatch = p.match(REGEX.Action.Nullify);
-             if (nullMatch && hookName === 'onBeforeReceiveDamage') {
+            else if (instr.kind === 'Nullify' && hookName === 'onBeforeReceiveDamage') {
                  if (ctx.logs) ctx.logs.push({ msg: `损伤被抵消`, type: LogType.Block });
                  return { hpDmg: 0, spDmg: 0 };
-             }
+            }
         }
     }
 };

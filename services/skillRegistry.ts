@@ -1,9 +1,10 @@
 
 import { LogType, SkillDefinition, RuntimeCricket } from '../types';
-import { executeDSL } from './dslInterpreter';
+import { executeDSL, compileSkill } from './dslInterpreter';
 
 // Helper to safely add log and shout
-const act = (ctx: { logs: { msg: string; type: LogType }[] }, skill: SkillDefinition, msg: string) => {
+const act = (ctx: { logs: { msg: string; type: LogType }[] | null }, skill: SkillDefinition, msg: string) => {
+    if (!ctx.logs) return;
     if (skill.shout) {
         ctx.logs.push({ msg: `「${skill.shout}」`, type: LogType.Shout });
     }
@@ -49,7 +50,7 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
                  ctx.opponent.currentHp = Math.max(0, ctx.opponent.currentHp - damage);
                  ctx.opponent.currentSp = Math.max(0, ctx.opponent.currentSp - spDamage);
                  ctx.opponent.currentDurability = Math.max(0, ctx.opponent.currentDurability - 1);
-                 ctx.logs.push({ msg: `${ctx.opponent.name} 受到毒锥重创！(耐久-1, 体力-${damage}, 斗性-${spDamage})`, type: LogType.Crit });
+                 if (ctx.logs) ctx.logs.push({ msg: `${ctx.opponent.name} 受到毒锥重创！(耐久-1, 体力-${damage}, 斗性-${spDamage})`, type: LogType.Crit });
              }
         }
     },
@@ -465,3 +466,6 @@ export const SKILL_REGISTRY: Record<string, SkillDefinition> = {
         }
     }
 };
+
+// INIT COMPILE
+Object.values(SKILL_REGISTRY).forEach(s => compileSkill(s));

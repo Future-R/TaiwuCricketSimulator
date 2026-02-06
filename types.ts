@@ -98,7 +98,7 @@ export interface BattleContext {
   state: CombatState;
   owner: RuntimeCricket;
   opponent: RuntimeCricket;
-  logs: { msg: string; type: LogType }[];
+  logs: { msg: string; type: LogType }[] | null; // Nullable for optimization
 }
 
 export interface DamageContext extends BattleContext {
@@ -122,6 +122,10 @@ export interface StatContext {
 
 // --- Skill Definition ---
 
+export interface CompiledDSL {
+  hooks: Map<string, any[]>; // HookName -> Instructions
+}
+
 export interface SkillDefinition {
   id: string;
   name: string;
@@ -129,6 +133,13 @@ export interface SkillDefinition {
   shout?: string; // Battle cry
   dsl?: string; // Natural Language DSL Configuration
   
+  // Optimization Fields
+  compiled?: CompiledDSL;
+  meta?: {
+    tianGuangProb?: number; // Pre-parsed probability for Tian Guang
+    [key: string]: any;
+  };
+
   // Hooks now receive the skill definition itself as the second argument
   onBattleStart?: (ctx: BattleContext, skill: SkillDefinition) => void;
   onRoundStart?: (ctx: BattleContext, skill: SkillDefinition) => void;

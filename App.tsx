@@ -7,9 +7,10 @@ import { CricketCard } from './components/CricketCard';
 import { CricketDetail } from './components/BattleArena';
 import { BattleLogViewer } from './components/BattleLog';
 import { useBattleEngine } from './hooks/useBattleEngine';
-import { Search, Zap, ZapOff, Loader2, List, Swords, ScrollText, Upload, Download, FileJson, Settings2 } from 'lucide-react';
+import { Search, Zap, ZapOff, Loader2, List, Swords, ScrollText, Upload, Download, FileJson, Settings2, Image } from 'lucide-react';
 import { CricketData, SkillDefinition } from './types';
-import { executeDSL, clearDSLCache } from './services/dslInterpreter';
+import { executeDSL, clearDSLCache, compileSkill } from './services/dslInterpreter';
+import html2canvas from 'html2canvas';
 
 const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,6 +40,7 @@ const App: React.FC = () => {
   const [mobileTab, setMobileTab] = useState<'list' | 'arena' | 'logs'>('arena');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const skillFileInputRef = useRef<HTMLInputElement>(null);
+  const matrixRef = useRef<HTMLDivElement>(null);
 
   const { 
       combatState, startBattle, simulateBattles, calculateWinRates, calculateMatrixWinRates,
@@ -132,7 +134,7 @@ const App: React.FC = () => {
                   
                   json.forEach((s: Partial<SkillDefinition>) => {
                       if (s.id) {
-                          // 1. Invalidate DSL Cache for this skill so new DSL string takes effect
+                          // 1. Invalidate DSL Cache (Legacy)
                           clearDSLCache(s.id);
 
                           if (SKILL_REGISTRY[s.id]) {
@@ -142,6 +144,8 @@ const App: React.FC = () => {
                               if (s.prob !== undefined) existing.prob = s.prob;
                               if (s.dsl) existing.dsl = s.dsl; // Allow DSL import
                               if (s.shout) existing.shout = s.shout;
+                              // Re-compile
+                              compileSkill(existing);
                           } else {
                               // Create New Skill
                               SKILL_REGISTRY[s.id] = {
@@ -163,6 +167,7 @@ const App: React.FC = () => {
                                   onAfterReceiveDamage: (ctx, skill) => executeDSL(skill.dsl, 'onAfterReceiveDamage', ctx, skill),
                                   onBeforeAttack: (ctx, skill) => executeDSL(skill.dsl, 'onBeforeAttack', ctx, skill),
                               } as SkillDefinition;
+                              compileSkill(SKILL_REGISTRY[s.id]);
                           }
                           updatedCount++;
                       }
@@ -198,6 +203,27 @@ const App: React.FC = () => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
+  };
+
+  const handleExportMatrixImage = async () => {
+      if (matrixRef.current) {
+          try {
+              const canvas = await html2canvas(matrixRef.current, {
+                  backgroundColor: '#09090b', // zinc-950
+                  scale: 2 // High res
+              });
+              const url = canvas.toDataURL("image/png");
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `全员胜率表_${new Date().toISOString().slice(0,10)}.png`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+          } catch (e) {
+              console.error("Snapshot failed", e);
+              alert("导出图片失败");
+          }
+      }
   };
 
   return (
@@ -299,9 +325,14 @@ const App: React.FC = () => {
             <div className="absolute inset-0 z-30 bg-zinc-950 flex flex-col flex-1 overflow-auto p-4 lg:p-6 lg:static">
                 <h2 className="text-xl lg:text-2xl font-bold text-amber-500 mb-4 flex justify-between items-center sticky top-0 bg-zinc-950 z-20 py-2">
                     <span className="text-sm lg:text-xl">全员对战胜率表 (各{simulationResults?.count || simCount}场)</span>
-                    <button onClick={resetBattle} className="px-4 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700">关闭</button>
+                    <div className="flex gap-2">
+                        <button onClick={handleExportMatrixImage} className="px-3 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700 flex items-center gap-1">
+                            <Image size={14} /> 导出图片
+                        </button>
+                        <button onClick={resetBattle} className="px-4 py-1 text-sm bg-zinc-800 hover:bg-zinc-700 rounded border border-zinc-700">关闭</button>
+                    </div>
                 </h2>
-                <div className="overflow-x-auto border border-zinc-800 rounded flex-1">
+                <div className="overflow-x-auto border border-zinc-800 rounded flex-1" ref={matrixRef}>
                     <table className="min-w-full text-xs text-center border-collapse">
                         <thead>
                             <tr>
