@@ -105,7 +105,7 @@ const createHookContext = (
     owner,
     opponent,
     logs,
-    getStat: (t, s) => getStat(t, t === owner ? opponent : owner, s)
+    getStat: (t: RuntimeCricket, s: any) => getStat(t, t === owner ? opponent : owner, s)
 });
 
 // --- GENERIC HOOK TRIGGER ---
@@ -257,7 +257,7 @@ const handleDamage = (
         sourceType,
         rawHpDmg,
         isCounter,
-        getStat: (t, s) => getStat(t, t === defender ? attacker : defender, s)
+        getStat: (t: RuntimeCricket, s: any) => getStat(t, t === defender ? attacker : defender, s)
     };
 
     if (skillsEnabled) {
@@ -294,7 +294,7 @@ const handleDamage = (
     applyDamage(defender, ctx.hpDmg, ctx.spDmg, ctx.durDmg);
 
     // Attacker Hooks (After Deal)
-    const attackCtx: DamageContext = { ...ctx, owner: attacker, opponent: defender, actualHpDmg: ctx.hpDmg, actualSpDmg: ctx.spDmg, getStat: (t, s) => getStat(t, t === attacker ? defender : attacker, s) } as any;
+    const attackCtx: DamageContext = { ...ctx, owner: attacker, opponent: defender, actualHpDmg: ctx.hpDmg, actualSpDmg: ctx.spDmg, getStat: (t: RuntimeCricket, s: any) => getStat(t, t === attacker ? defender : attacker, s) } as any;
     
     if (skillsEnabled) {
          triggerHooks(attacker, defender, 'onAfterDealDamage', attackCtx);
