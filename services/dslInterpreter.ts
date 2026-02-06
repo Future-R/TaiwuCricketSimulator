@@ -79,6 +79,8 @@ const parseExpression = (expr: string, ctx: any, skill: SkillDefinition): number
 
 // 辅助：解析动作中的数值参数 (支持 "50%伤害量", "10点", "200%回合数")
 const parseActionValue = (valStr: string, ctx: any): number => {
+    if (!valStr) return 0; // Defensive check
+
     let base = 0;
     let ratio = 1;
 
@@ -206,13 +208,13 @@ export const compileSkill = (skill: SkillDefinition) => {
                  // Heal
                 const healMatch = p.match(REGEX.Action.Heal);
                 if (healMatch) {
-                    instructions.push({ type: 'Action', kind: 'Heal', args: [healMatch[1], p] });
+                    instructions.push({ type: 'Action', kind: 'Heal', args: [healMatch[1] || "", p] });
                     continue;
                 }
                 // Damage
                 const dmgMatch = p.match(REGEX.Action.Damage);
                 if (dmgMatch) {
-                    instructions.push({ type: 'Action', kind: 'Damage', args: [dmgMatch[1], p] });
+                    instructions.push({ type: 'Action', kind: 'Damage', args: [dmgMatch[1] || "", p] });
                     continue;
                 }
                 // StackSelf
