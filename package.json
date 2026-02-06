@@ -14,12 +14,14 @@
     "lucide-react": "^0.344.0",
     "framer-motion": "^11.0.0",
     "clsx": "^2.1.0",
-    "tailwind-merge": "^2.2.0"
+    "tailwind-merge": "^2.2.0",
+    "html2canvas": "^1.4.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
+    "@types/html2canvas": "^1.0.0",
     "@vitejs/plugin-react": "^4.2.1",
     "typescript": "^5.2.2",
     "vite": "^5.2.0"

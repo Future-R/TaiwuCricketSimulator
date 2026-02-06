@@ -116,7 +116,7 @@ interface CompiledInstruction {
     args: any[];
 }
 
-export const clearDSLCache = (skillId?: string) => {
+export const clearDSLCache = (_skillId?: string) => {
     // Legacy support, now compilation happens on registry init
 };
 
