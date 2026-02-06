@@ -10,7 +10,7 @@ import { useBattleEngine } from './hooks/useBattleEngine';
 import { Search, Zap, ZapOff, Loader2, List, Swords, ScrollText, Upload, Download, FileJson, Settings2, Image } from 'lucide-react';
 import { CricketData, SkillDefinition } from './types';
 import { executeDSL, clearDSLCache, compileSkill } from './services/dslInterpreter';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 
 const App: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -208,13 +208,12 @@ const App: React.FC = () => {
   const handleExportMatrixImage = async () => {
       if (matrixRef.current) {
           try {
-              const canvas = await html2canvas(matrixRef.current, {
+              const dataUrl = await toPng(matrixRef.current, {
                   backgroundColor: '#09090b', // zinc-950
-                  scale: 2 // High res
+                  pixelRatio: 2 // High resolution
               });
-              const url = canvas.toDataURL("image/png");
               const link = document.createElement('a');
-              link.href = url;
+              link.href = dataUrl;
               link.download = `全员胜率表_${new Date().toISOString().slice(0,10)}.png`;
               document.body.appendChild(link);
               link.click();
